@@ -1,24 +1,27 @@
 # Egyptian Fractions and Computational Complexity
 
-Research archive for Egyptian-fraction representations and their computational complexity.
+Research archive on Egyptian-fraction representations, especially the decision problem of representing a rational number as the sum of two distinct unit fractions.
 
-**Status:** exploratory mathematical research. This is not a published theorem and does not solve P vs NP.
+**Status:** exploratory research notes; the randomized reduction still requires a formal proof audit.
 
-## Documents
+## Start here
 
-- `research-status.md`: current results and confidence levels.
-- `mathematical-foundations.md`: exact two-term criterion, subset-sum encoding, and square-modulus algebra.
-- `randomized-reduction.md`: candidate Las Vegas reduction and analytic-number-theory input.
-- `fixed-numerator.md`: finite-group dynamic programming for fixed numerator.
-- `proof-audit.md`: known gaps and corrections to earlier conversational claims.
-- `research-roadmap.md`: next tasks.
-- `references.md`: primary references.
+- [Current status](research-status.md)
+- [Core mathematics and signed reduction](mathematical-foundations.md)
+- [Square-modulus randomized reduction](randomized-reduction.md)
+- [Fixed numerator](fixed-numerator.md)
+- [Minimum-term decision problem](minimum-term-decision.md)
+- [Proof audit](proof-audit.md)
+- [Research roadmap](research-roadmap.md)
+- [Research log](research-log.md)
+- [References](references.md)
+- [Exact small-instance verifier](experiments_signed.py)
 
 ## Evidence labels
 
-- **PROVED:** complete elementary derivation included.
-- **THEOREM-DEPENDENT:** depends on a cited published theorem; application still requires independent audit.
-- **COMPUTATION-CLAIM:** numerical evidence; requires reproducible code and certificates.
+- **PROVED:** complete elementary derivation is recorded.
+- **THEOREM-DEPENDENT:** depends on a cited published theorem; hypotheses and application require audit.
+- **COMPUTATION-VERIFIED:** exact computation with reproducible code; does not replace a general proof.
 - **OPEN:** not established.
 
-Do not describe the current work as a standard NP-completeness proof. The main target is a candidate Las Vegas randomized reduction from SUBSET SUM to TWO-EGYPTIAN. Its analytic and algorithmic details still require independent verification.
+Do not describe the current work as a standard deterministic NP-completeness proof or a solution to P vs NP. The strongest current target is a Las Vegas randomized expected-polynomial-time reduction from SUBSET SUM to TWO-EGYPTIAN.

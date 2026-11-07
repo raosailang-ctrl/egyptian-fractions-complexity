@@ -240,6 +240,16 @@ class SyncTests(unittest.TestCase):
                 "scoped_candidates": [],
                 "page_candidates": ["tag=button | text=attachment.md"],
                 "message_html": "<div>attachment</div>",
+                "download_attempts": [{
+                    "metadata": "aria-label=下载文件",
+                    "method": "no-download-observed",
+                    "visible": True,
+                    "enabled": True,
+                    "bounding_box": {"x": 1, "y": 2, "width": 10, "height": 10},
+                    "error": "TimeoutError: download event not fired",
+                    "fallback_file": "",
+                    "control_html": "<button aria-label='下载文件'></button>",
+                }],
             }
 
             def wait_for_response(self, previous_text=None):
@@ -267,6 +277,9 @@ class SyncTests(unittest.TestCase):
         self.assertIn("Captured response without state marker.", report)
         self.assertIn("Page-wide candidate count: 1", report)
         self.assertIn("tag=button | text=attachment.md", report)
+        self.assertIn("### Download attempts", report)
+        self.assertIn("download event not fired", report)
+        self.assertIn("aria-label=下载文件", report)
         self.assertFalse((self.root / "research_state.md").exists())
 
     def test_run_round_hands_off_when_context_is_exhausted(self):

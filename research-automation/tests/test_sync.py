@@ -51,6 +51,31 @@ class SyncTests(unittest.TestCase):
         )
         self.assertEqual(sync.extract_state_block(text), "Next step: prove lemma")
 
+    def test_extract_state_block_accepts_visible_markers(self):
+        text = (
+            "before\\n"
+            "RESEARCH_STATE_BEGIN\\n"
+            "Next step: prove lemma\\n"
+            "Artifacts: report.md\\n"
+            "RESEARCH_STATE_END\\n"
+            "after"
+        )
+        self.assertEqual(
+            sync.extract_state_block(text),
+            "Next step: prove lemma\\nArtifacts: report.md",
+        )
+
+    def test_prompt_builders_convert_legacy_html_markers_to_visible_text(self):
+        template = "Return state: <!-- RESEARCH_STATE_BEGIN --> ... <!-- RESEARCH_STATE_END -->"
+        self.assertEqual(
+            sync.build_continue_prompt("state", "abc", template),
+            "Return state: RESEARCH_STATE_BEGIN ... RESEARCH_STATE_END",
+        )
+        self.assertEqual(
+            sync.build_handoff_prompt("state", "abc", template),
+            "Return state: RESEARCH_STATE_BEGIN ... RESEARCH_STATE_END",
+        )
+
     def test_safe_extract_archive_flattens_one_outer_directory(self):
         archive = self.root / "package.zip"
         repo = self.root / "repo"

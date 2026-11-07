@@ -35,7 +35,15 @@ handoff = """
 当前状态：
 {state_text}
 
-完成后生成新的成果文件，并保留同样的 RESEARCH_STATE 标记。
+完成后生成新的研究成果文件，并在回复末尾用以下可见文本标记输出最新状态（不要使用 HTML 注释）：
+RESEARCH_STATE_BEGIN
+Current question:
+Completed:
+Evidence:
+Open problems:
+Next step:
+Artifacts:
+RESEARCH_STATE_END
 """
 
 [runtime]

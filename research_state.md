@@ -1,40 +1,37 @@
 Current question:
-Complete the first real dry-run of the dedicated Chrome research synchronizer, then review the latest assistant response and downloaded artifacts before enabling any real sync.
+Diagnose the first dedicated Chrome dry-run that connected successfully but captured zero attachments and no research-state marker; rerun once and inspect the saved diagnostic before enabling real sync.
 
 Completed:
-- Read the repository research_state.md and recent commits.
-- Reviewed commit e95cfcc9db216890b1b3b7703fdf65d76594e4a5: the synchronizer now prefers a normal wide ChatGPT tab over a floating-chat tab and has a composer-entry fallback.
-- Reviewed commit ca5ffdad7b1ad149cde06de77c2c963b563bdd7a: added the 20-prime finite-field sieve.
-- Audited start_chatgpt_research.ps1, chatgpt_research_sync.py, config.example.toml, requirements.txt, README, and tests/test_sync.py.
-- Confirmed from code that dry-run stages downloads but does not overlay files into the repository, update research_state.md, run actual verifiers, commit/push, or send a continuation prompt.
-- Added research-automation/DRY_RUN_PREFLIGHT_AUDIT_2026-11-07.md with the execution checklist, safety boundaries, and blockers.
+- Read research_state.md and latest commit history. Baseline before this round was ca5ffdad7b1ad149cde06de77c2c963b563bdd7a; the repository state also contained the dry-run preflight audit.
+- Reviewed the latest Chrome tab-selection/composer fix and the synchronizer's response capture, attachment collection, and dry-run branches.
+- User executed: powershell -ExecutionPolicy Bypass -File research-automation/start_chatgpt_research.ps1 -Once -DryRun.
+- Live result: Chrome connected and waited; attachment collection returned 0; run stopped with SyncError: "The response contained no downloadable artifacts or research state."
+- Identified that the old dry-run branch discarded the captured assistant response when both the state marker and attachments were missing, preventing diagnosis.
+- Updated research-automation/chatgpt_research_sync.py so every dry-run writes staging/<round>/dry-run-diagnostic.md with page URL, response character count, state-marker detection, attachment names/sizes, and captured latest assistant response. A zero-artifact response now emits a warning and exits without changing repository files or sending a continuation prompt.
+- Added a regression test covering the zero-state/zero-attachment case.
 
 Evidence:
-- Latest inspected user commit: e95cfcc9db216890b1b3b7703fdf65d76594e4a5 (normal ChatGPT tab/composer fix).
-- Latest audit commit: 244289ca7101a38729371758bd4f7cbf7b728fc9.
-- Audit file: research-automation/DRY_RUN_PREFLIGHT_AUDIT_2026-11-07.md.
-- Dry-run isolation branch in run_round() returns before copy_artifact(), write_research_state(), real verifier execution, commit_and_push(), and send_prompt().
-- config.toml is gitignored and cannot be read from GitHub; it must be configured locally with the actual research conversation URL and repository path.
+- User-provided live screenshot shows successful CDP/ChatGPT connection, 0 attachments, then SyncError at run_round line 833.
+- Code commit: b7b89d67f95f82823e9989c0d724b1ea24b46089.
+- Test commit: 2c6cd498711f383d3e24f039c6128cd0dad253ec.
+- Updated source blob SHA: 8a5791c773d65df705f63ff7e0a01cc5a7292989.
+- Updated test blob SHA: 2c67adb8486554c640ba0574fc7163dcca8595cb.
+- Previous preflight audit: research-automation/DRY_RUN_PREFLIGHT_AUDIT_2026-11-07.md.
+- No real sync, commit or push was performed by the local dry-run; the above GitHub commits are this assistant's repository edits.
 
 Open problems:
-- A real Windows Chrome/CDP dry-run has NOT been executed from this environment; the user's local config.toml, authenticated Chrome profile, and local CDP session are not accessible here.
-- The launcher reuses an already-listening CDP port without validating that the process belongs to the configured dedicated Chrome profile.
-- Dry-run console output reports attachment count but does not provide a full response preview and per-file size/hash manifest; the staging directory and JSONL log need manual review.
-- Need verify the actual response is the intended research conversation and that all attachment files are complete and correct.
-- Do not claim dry-run success based on static review or mocked tests.
+- The actual captured page URL and latest assistant response have not yet been inspected; zero attachments alone does not prove wrong conversation or broken selectors.
+- The user's local config.toml and authenticated Chrome profile are not accessible through GitHub.
+- The new diagnostic code has not yet been executed on the user's Windows machine.
+- Once the diagnostic is reviewed, attachment-card selectors or chat_url may need adjustment.
 
 Next step:
-On the user's Windows machine, from the repository root:
-1. Ensure research-automation/config.toml exists; if not, copy config.example.toml and edit it locally.
-2. Set chat_url to the exact current research conversation URL, repo_path to the local repository root, and keep profile/download/staging/log directories outside the repository.
-3. Confirm port 9222 is not owned by an unrelated Chrome/CDP process.
-4. Run: powershell -ExecutionPolicy Bypass -File research-automation/start_chatgpt_research.ps1 -Once -DryRun
-5. Review the latest assistant response in the dedicated Chrome window, list staged filenames and sizes, and inspect the final research-sync.jsonl event.
-6. Return the console output and staging manifest for review. Only after that should a real sync be considered.
+On Windows, pull the latest main branch, then rerun:
+powershell -ExecutionPolicy Bypass -File research-automation/start_chatgpt_research.ps1 -Once -DryRun
+Open the newest dry-run-diagnostic.md under the configured staging directory. Check Page URL, State block found, Downloaded attachments, and the captured latest assistant response. Send the diagnostic text (redacting private content if desired) and the PowerShell output for the next targeted fix. Do not run without -DryRun yet.
 
 Artifacts:
 - research-automation/DRY_RUN_PREFLIGHT_AUDIT_2026-11-07.md
 - research-automation/chatgpt_research_sync.py
-- research-automation/start_chatgpt_research.ps1
-- research-automation/config.example.toml
 - research-automation/tests/test_sync.py
+- research_state.md

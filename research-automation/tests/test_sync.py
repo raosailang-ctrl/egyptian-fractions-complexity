@@ -111,6 +111,30 @@ class SyncTests(unittest.TestCase):
         ).stdout.strip()
         self.assertEqual(sha, remote_sha)
 
+    def test_context_limit_detection_matches_common_messages(self):
+        self.assertTrue(sync.context_limit_detected("This conversation is too long to continue."))
+        self.assertTrue(sync.context_limit_detected("maximum context length reached"))
+        self.assertFalse(sync.context_limit_detected("The proof is complete; continue with the next lemma."))
+
+    def test_latest_assistant_text_uses_author_role_locator(self):
+        class Locator:
+            def count(self):
+                return 2
+
+            def nth(self, index):
+                return self
+
+            def inner_text(self):
+                return "latest assistant result"
+
+        class Page:
+            def locator(self, selector):
+                self.selector = selector
+                return Locator()
+
+        browser = sync.ChatGPTBrowser.__new__(sync.ChatGPTBrowser)
+        self.assertEqual(browser.latest_assistant_text(Page()), "latest assistant result")
+
 
 if __name__ == "__main__":
     unittest.main()

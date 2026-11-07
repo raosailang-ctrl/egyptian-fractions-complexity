@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import tarfile
+import time
 import tomllib
 import zipfile
 from dataclasses import dataclass, field
@@ -45,6 +46,13 @@ DEFAULT_ALLOWED_SUFFIXES = (
     ".zip",
     ".tar",
     ".gz",
+)
+CONTEXT_LIMIT_PHRASES = (
+    "conversation is too long",
+    "maximum context",
+    "context length",
+    "context window",
+    "too many tokens",
 )
 IGNORED_PARTS = {".git", "__pycache__", ".pytest_cache", ".mypy_cache"}
 IGNORED_NAMES = {".ds_store", "thumbs.db"}
@@ -116,6 +124,11 @@ def extract_state_block(text: str) -> str | None:
     pattern = re.escape(STATE_BEGIN) + r"\s*(.*?)\s*" + re.escape(STATE_END)
     match = re.search(pattern, text, flags=re.DOTALL)
     return match.group(1).strip() if match else None
+
+
+def context_limit_detected(text: str) -> bool:
+    normalized = re.sub(r"\s+", " ", text.lower())
+    return any(phrase in normalized for phrase in CONTEXT_LIMIT_PHRASES)
 
 
 def _is_ignored(path: PurePosixPath) -> bool:
@@ -317,6 +330,196 @@ def commit_and_push(
     _git(repo_root, "commit", "-m", message)
     _git(repo_root, "push", remote, branch)
     return _git(repo_root, "rev-parse", "HEAD").stdout.strip()
+
+
+class ChatGPTBrowser:
+    """Small Playwright adapter for a dedicated Chrome CDP session."""
+
+    def __init__(
+        self,
+        chat_url: str,
+        cdp_port: int = 9222,
+        response_timeout_seconds: int = 300,
+        stable_poll_seconds: float = 2.0,
+    ) -> None:
+        self.chat_url = chat_url
+        self.cdp_port = cdp_port
+        self.response_timeout_seconds = response_timeout_seconds
+        self.stable_poll_seconds = stable_poll_seconds
+        self._playwright = None
+        self._browser = None
+        self._context = None
+        self.page = None
+
+    def connect(self) -> None:
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError as exc:
+            raise BrowserError(
+                "Playwright is not installed. Run: python -m pip install -r research-automation/requirements.txt"
+            ) from exc
+        self._playwright = sync_playwright().start()
+        try:
+            self._browser = self._playwright.chromium.connect_over_cdp(
+                f"http://127.0.0.1:{self.cdp_port}"
+            )
+        except Exception as exc:  # Playwright exposes several transport exception types.
+            self.close()
+            raise BrowserError(
+                f"Cannot connect to Chrome CDP port {self.cdp_port}. Start the dedicated Chrome launcher first."
+            ) from exc
+        contexts = self._browser.contexts
+        if not contexts:
+            self.close()
+            raise BrowserError("Chrome CDP is connected but has no browser context.")
+        self._context = contexts[0]
+        pages = self._context.pages
+        self.page = pages[0] if pages else self._context.new_page()
+        if not self.page.url or self.page.url == "about:blank":
+            self.page.goto(self.chat_url, wait_until="domcontentloaded")
+
+    def wait_for_login(self) -> None:
+        if self.page is None:
+            raise BrowserError("Browser is not connected.")
+        deadline = time.monotonic() + self.response_timeout_seconds
+        while time.monotonic() < deadline:
+            url = (self.page.url or "").lower()
+            try:
+                body = self.page.locator("body").inner_text(timeout=1000).lower()
+            except Exception:
+                body = ""
+            if "/auth/" not in url and "log in" not in body and "sign up" not in body:
+                return
+            self.page.wait_for_timeout(1000)
+        raise BrowserError("ChatGPT login is still required in the dedicated Chrome window.")
+
+    def _last_locator(self, selectors: tuple[str, ...]):
+        if self.page is None:
+            raise BrowserError("Browser is not connected.")
+        for selector in selectors:
+            locator = self.page.locator(selector)
+            try:
+                count = locator.count()
+            except Exception:
+                count = 0
+            if count:
+                return locator.nth(count - 1)
+        return None
+
+    def latest_assistant_text(self, page=None) -> str:
+        page = page or self.page
+        if page is None:
+            raise BrowserError("Browser is not connected.")
+        locator = None
+        for selector in (
+            "[data-message-author-role='assistant']",
+            "main article",
+        ):
+            candidate = page.locator(selector)
+            try:
+                count = candidate.count()
+            except Exception:
+                count = 0
+            if count:
+                locator = candidate.nth(count - 1)
+                break
+        if locator is None:
+            locator = page.locator("main")
+        return locator.inner_text().strip()
+
+    def _composer(self):
+        return self._last_locator(("textarea", "[contenteditable='true']", "div[role='textbox']"))
+
+    def send_prompt(self, prompt: str) -> None:
+        composer = self._composer()
+        if composer is None:
+            raise BrowserError("Cannot find the ChatGPT message composer.")
+        composer.fill(prompt)
+        composer.press("Enter")
+
+    def _stop_button_visible(self) -> bool:
+        if self.page is None:
+            return False
+        for selector in (
+            "button[aria-label*='Stop']",
+            "button:has-text('Stop')",
+            "[data-testid*='stop']",
+        ):
+            try:
+                if self.page.locator(selector).count():
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def wait_for_response(self) -> str:
+        deadline = time.monotonic() + self.response_timeout_seconds
+        previous = None
+        stable = 0
+        while time.monotonic() < deadline:
+            current = self.latest_assistant_text()
+            if self._stop_button_visible():
+                stable = 0
+            elif current and current == previous:
+                stable += 1
+                if stable >= 2:
+                    return current
+            else:
+                stable = 0
+            previous = current
+            self.page.wait_for_timeout(int(self.stable_poll_seconds * 1000))
+        raise BrowserError("Timed out waiting for the ChatGPT response to finish.")
+
+    def collect_downloads(self, destination: Path) -> list[Path]:
+        if self.page is None:
+            raise BrowserError("Browser is not connected.")
+        destination.mkdir(parents=True, exist_ok=True)
+        links = self.page.locator("a")
+        downloaded: list[Path] = []
+        for index in range(links.count()):
+            link = links.nth(index)
+            href = link.get_attribute("href") or ""
+            try:
+                label = link.inner_text().lower()
+            except Exception:
+                label = ""
+            if not href.startswith("sandbox:") and "download" not in label:
+                continue
+            try:
+                with self.page.expect_download(timeout=10000) as download_info:
+                    link.click()
+                download = download_info.value
+                target = destination / download.suggested_filename
+                counter = 2
+                while target.exists():
+                    target = destination / f"{target.stem}-{counter}{target.suffix}"
+                    counter += 1
+                download.save_as(str(target))
+                downloaded.append(target)
+            except Exception:
+                continue
+        return downloaded
+
+    def open_new_conversation(self) -> None:
+        if self.page is None:
+            raise BrowserError("Browser is not connected.")
+        self.page.goto("https://chatgpt.com/?new=true", wait_until="domcontentloaded")
+
+    def close(self) -> None:
+        if self._browser is not None:
+            try:
+                self._browser.close()
+            except Exception:
+                pass
+        if self._playwright is not None:
+            try:
+                self._playwright.stop()
+            except Exception:
+                pass
+        self._browser = None
+        self._playwright = None
+        self._context = None
+        self.page = None
 
 
 def _json_log(path: Path, event: str, **fields: Any) -> None:

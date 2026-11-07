@@ -183,6 +183,8 @@ def write_dry_run_diagnostic(
         lines.append(f"- Scoped candidate count: {scan.get('scoped_candidate_count', 'unknown')}")
         lines.append(f"- Page-wide candidate count: {scan.get('page_candidate_count', 'unknown')}")
         lines.append(f"- Selected message id: {scan.get('selected_message_id', 'unknown')}")
+        lines.append(f"- Latest message id: {scan.get('latest_message_id', 'unknown')}")
+        lines.append(f"- Attachment message DOM index: {scan.get('attachment_message_index', 'not found')}")
         lines.append(f"- Assistant message count: {scan.get('assistant_message_count', 'unknown')}")
         if scan.get("assistant_message_tail_error"):
             lines.append(f"- Message-tail scan error: {scan['assistant_message_tail_error']}")
@@ -545,6 +547,37 @@ class ChatGPTBrowser:
             page=page,
         )
 
+    @staticmethod
+    def _message_has_attachment_control(message) -> bool:
+        selectors = (
+            "button[aria-label*='预览']",
+            "button[aria-label*='preview' i]",
+            "button[aria-label*='下载文件']",
+            "button[aria-label*='Download' i]",
+            "a[download]",
+            "[data-testid*='file']",
+            "[data-testid*='attachment']",
+        )
+        for selector in selectors:
+            try:
+                if message.locator(selector).count():
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _latest_attachment_locator(self, limit: int = 8):
+        if self.page is None:
+            raise BrowserError("Browser is not connected.")
+        messages = self.page.locator("[data-chatgpt-selection-message-id]")
+        count = messages.count()
+        start = max(0, count - limit)
+        for index in range(count - 1, start - 1, -1):
+            message = messages.nth(index)
+            if self._message_has_attachment_control(message):
+                return message, index
+        return self._latest_assistant_locator(), None
+
     def latest_assistant_text(self, page=None) -> str:
         page = page or self.page
         if page is None:
@@ -710,7 +743,10 @@ class ChatGPTBrowser:
         if self.page is None:
             raise BrowserError("Browser is not connected.")
         destination.mkdir(parents=True, exist_ok=True)
-        message = self._latest_assistant_locator()
+        latest_message = self._latest_assistant_locator()
+        message, attachment_message_index = self._latest_attachment_locator()
+        if message is None:
+            message = latest_message
         # Generated files are currently rendered as file cards.  Depending on
         # the ChatGPT build, the card itself may be an anchor, a button, or a
         # role=button element, and the visible filename may be the only useful
@@ -725,6 +761,11 @@ class ChatGPTBrowser:
         page_candidates = self.page.locator(selector)
         scan: dict[str, Any] = {
             "message_found": message is not None,
+            "latest_message_id": (
+                latest_message.get_attribute("data-chatgpt-selection-message-id")
+                if latest_message is not None else None
+            ),
+            "attachment_message_index": attachment_message_index,
             "scoped_candidate_count": candidates.count(),
             "page_candidate_count": page_candidates.count(),
             "scoped_candidates": [],
@@ -774,6 +815,11 @@ class ChatGPTBrowser:
                 message.get_attribute("data-chatgpt-selection-message-id")
                 if message is not None else None
             )
+            scan["latest_message_id"] = (
+                latest_message.get_attribute("data-chatgpt-selection-message-id")
+                if latest_message is not None else None
+            )
+            scan["attachment_message_index"] = attachment_message_index
             tail = []
             for message_index in range(max(0, message_count - 8), message_count):
                 item = all_messages.nth(message_index)

@@ -41,6 +41,72 @@ class SyncTests(unittest.TestCase):
     def tearDown(self):
         self.tempdir.cleanup()
 
+    def test_latest_attachment_locator_selects_previous_file_bearing_message(self):
+        class FakeControls:
+            def __init__(self, count):
+                self._count = count
+
+            def count(self):
+                return self._count
+
+        class FakeMessage:
+            def __init__(self, message_id, has_attachment):
+                self.message_id = message_id
+                self.has_attachment = has_attachment
+
+            def get_attribute(self, name):
+                return self.message_id if name == "data-chatgpt-selection-message-id" else None
+
+            def locator(self, selector):
+                matched = self.has_attachment and (
+                    "预览" in selector or "preview" in selector.lower()
+                )
+                return FakeControls(1 if matched else 0)
+
+        class FakeMessages:
+            def __init__(self, items):
+                self.items = items
+
+            def count(self):
+                return len(self.items)
+
+            def nth(self, index):
+                return self.items[index]
+
+        class FakePage:
+            def __init__(self, items):
+                self.items = items
+
+            def locator(self, selector):
+                return FakeMessages(self.items)
+
+        items = [
+            FakeMessage("old-file", True),
+            FakeMessage("text-only", False),
+            FakeMessage("new-file", True),
+            FakeMessage("latest-text", False),
+        ]
+        browser = sync.ChatGPTBrowser("https://chatgpt.com/c/example")
+        browser.page = FakePage(items)
+        browser._latest_assistant_locator = lambda: items[-1]
+        selected, index = browser._latest_attachment_locator()
+        self.assertEqual(index, 2)
+        self.assertEqual(
+            selected.get_attribute("data-chatgpt-selection-message-id"),
+            "new-file",
+        )
+
+    def test_message_without_attachment_controls_is_not_selected(self):
+        class FakeControls:
+            def count(self):
+                return 0
+
+        class FakeMessage:
+            def locator(self, selector):
+                return FakeControls()
+
+        self.assertFalse(sync.ChatGPTBrowser._message_has_attachment_control(FakeMessage()))
+
     def test_extract_state_block_returns_only_marked_content(self):
         text = (
             "before\n"

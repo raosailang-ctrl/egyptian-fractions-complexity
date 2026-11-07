@@ -188,6 +188,17 @@ def write_dry_run_diagnostic(
         lines.append("")
         lines.append("### Page-wide candidate metadata")
         lines.extend(f"- {item}" for item in scan.get("page_candidates", []))
+        lines.append("")
+        lines.append("### Download attempts")
+        for attempt in scan.get("download_attempts", []):
+            lines.append(f"- Candidate: {attempt.get('metadata', '')}")
+            lines.append(f"  - Method: {attempt.get('method')}")
+            lines.append(f"  - Visible: {attempt.get('visible')}; enabled: {attempt.get('enabled')}")
+            lines.append(f"  - Bounding box: {attempt.get('bounding_box')}")
+            lines.append(f"  - Error: {attempt.get('error') or '(none)'}")
+            lines.append(f"  - Result file: {attempt.get('fallback_file') or '(none)'}")
+            if attempt.get("control_html"):
+                lines.extend(["  - Control HTML:", "    ```html", "    " + attempt["control_html"].replace("\\n", " "), "    ```"])
         if scan.get("message_html"):
             lines.extend(["", "### Latest assistant container HTML (truncated)", "", "```html", scan["message_html"], "```"])
     else:
@@ -708,6 +719,7 @@ class ChatGPTBrowser:
             "scoped_candidates": [],
             "page_candidates": [],
             "message_html": "",
+            "download_attempts": [],
         }
 
         def candidate_metadata(locator: Any, limit: int = 30) -> list[str]:
@@ -810,24 +822,63 @@ class ChatGPTBrowser:
                 continue
             if href or filename_match:
                 seen_candidates.add(identity)
+            attempt: dict[str, Any] = {
+                "label": label,
+                "metadata": metadata[:500],
+                "href": href,
+                "method": "not-started",
+                "visible": None,
+                "enabled": None,
+                "bounding_box": None,
+                "control_html": "",
+                "error": "",
+                "fallback_file": "",
+            }
+            try:
+                attempt["visible"] = candidate.is_visible()
+            except Exception as exc:
+                attempt["visible"] = f"error: {type(exc).__name__}: {exc}"
+            try:
+                attempt["enabled"] = candidate.is_enabled()
+            except Exception as exc:
+                attempt["enabled"] = f"error: {type(exc).__name__}: {exc}"
+            try:
+                attempt["bounding_box"] = candidate.bounding_box()
+            except Exception as exc:
+                attempt["bounding_box"] = f"error: {type(exc).__name__}: {exc}"
+            try:
+                attempt["control_html"] = candidate.evaluate("(el) => el.outerHTML.slice(0, 3000)")
+            except Exception as exc:
+                attempt["control_html"] = f"unavailable: {type(exc).__name__}: {exc}"
             before = self._file_snapshot(download_directories)
             try:
-                with self.page.expect_download(timeout=3000) as download_info:
+                with self.page.expect_download(timeout=5000) as download_info:
                     self._click_candidate(candidate)
                 download = download_info.value
                 target = self._unique_target(destination, download.suggested_filename)
                 download.save_as(str(target))
                 downloaded.append(target)
-            except Exception:
-                fallback = self._wait_for_fallback_download(download_directories, before)
+                attempt["method"] = "playwright-download"
+                attempt["fallback_file"] = str(target)
+            except Exception as exc:
+                attempt["error"] = f"{type(exc).__name__}: {exc}"
+                fallback = self._wait_for_fallback_download(download_directories, before, timeout_seconds=5.0)
                 if fallback is None:
+                    attempt["method"] = "no-download-observed"
+                    scan["download_attempts"].append(attempt)
                     continue
                 target = self._unique_target(destination, fallback.name)
                 try:
                     shutil.copy2(fallback, target)
-                except OSError:
+                except OSError as copy_exc:
+                    attempt["method"] = "fallback-copy-failed"
+                    attempt["error"] += f"; copy {type(copy_exc).__name__}: {copy_exc}"
+                    scan["download_attempts"].append(attempt)
                     continue
                 downloaded.append(target)
+                attempt["method"] = "fallback-copy"
+                attempt["fallback_file"] = str(fallback)
+            scan["download_attempts"].append(attempt)
         return downloaded
 
     def open_new_conversation(self) -> None:

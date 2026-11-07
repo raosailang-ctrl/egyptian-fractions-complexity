@@ -72,3 +72,8 @@ The helper stores this block only. It does not archive the full transcript.
 ### Attachment diagnostics
 
 When an attachment is not downloaded, the dry-run report includes scoped and page-wide DOM candidate counts, candidate labels/attributes, and a truncated HTML snapshot of the latest assistant message. Review this local diagnostic before changing selectors. The scan is diagnostic only; it does not click page-wide candidates or download unrelated controls.
+
+
+### Recent assistant-message selection diagnostics
+
+The dry-run report lists the last eight message containers in DOM order, including message IDs, text lengths, short text prefixes/suffixes, and button labels. This helps verify that the selected message is actually the latest assistant response before changing attachment selectors.

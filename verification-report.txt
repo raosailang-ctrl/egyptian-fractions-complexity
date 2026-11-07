@@ -1,0 +1,19 @@
+UNIVERSAL_KAPPA_ELIMINATION: PASS
+GENUS_TWO_SEXTIC_DISCRIMINANT: PASS
+  discr_b R_a = -140737488355328*a**20*(a - 1)**2*(a + 1)**2*(a**4 + 4*a**2 + 1)**2*(a**4 + 52*a**2 + 1)**2
+SPECIAL_FIBER_a_1_6: PASS
+  R_1/6(b) * 11664 = 36*b**6 + 12*b**5 + 3745*b**4 + 14688*b**3 + 88200*b**2 + 15552*b + 1296
+  b=4: kappa=89/6, Q(kappa)=8833/36 = (11/6)^2*73
+GENUS_ONE_QUARTIC_DISCRIMINANT: PASS
+  m mod 5=1: P=(40, 28), (b,c,kappa,Q)=(4, 2, 6, 26), nonsquare: PASS
+  m mod 5=2: P=(33, 13), (b,c,kappa,Q)=(35, 13, 27, 21), nonsquare: PASS
+  m mod 5=3: P=(33, 40), (b,c,kappa,Q)=(32, 21, 4, 22), nonsquare: PASS
+  m mod 5=4: P=(40, 25), (b,c,kappa,Q)=(16, 25, 25, 39), nonsquare: PASS
+MOD53_ORDER5_AND_FOUR_NONSQUARE_CLASSES: PASS
+CENTRAL_FAMILY_EXPLICIT_IDENTITY: PASS
+  t=420: h= 2117220
+  gcd(u,v) = 1260
+  bitlength: M~4log2(t), D~8log2(t), total~12log2(t)
+EXPLORATORY_RATIONAL_SQUARE_B_SCAN (NOT COMPLETE): [(-6, 1), (0, 1), (-33, 2), (1, 6)]
+ALL_EXACT_CERTIFICATES_PASSED
+NOTE: Faltings/Siegel finiteness and Weyl equidistribution are external mathematical theorems.

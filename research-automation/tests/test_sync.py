@@ -233,6 +233,14 @@ class SyncTests(unittest.TestCase):
 
         class FakeBrowser:
             page = type("Page", (), {"url": "https://chatgpt.com/c/example"})()
+            _attachment_scan = {
+                "message_found": True,
+                "scoped_candidate_count": 0,
+                "page_candidate_count": 1,
+                "scoped_candidates": [],
+                "page_candidates": ["tag=button | text=attachment.md"],
+                "message_html": "<div>attachment</div>",
+            }
 
             def wait_for_response(self, previous_text=None):
                 return "Captured response without state marker."
@@ -257,6 +265,8 @@ class SyncTests(unittest.TestCase):
         report = reports[0].read_text(encoding="utf-8")
         self.assertIn("State block found: no", report)
         self.assertIn("Captured response without state marker.", report)
+        self.assertIn("Page-wide candidate count: 1", report)
+        self.assertIn("tag=button | text=attachment.md", report)
         self.assertFalse((self.root / "research_state.md").exists())
 
     def test_run_round_hands_off_when_context_is_exhausted(self):

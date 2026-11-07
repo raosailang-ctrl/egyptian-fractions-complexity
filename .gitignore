@@ -1,0 +1,8 @@
+# Local ChatGPT research automation state and browser data
+research-automation/config.toml
+chatgpt-automation-profile/
+chatgpt-automation-downloads/
+chatgpt-automation-staging/
+chatgpt-automation-logs/
+research-automation/__pycache__/
+research-automation/tests/__pycache__/

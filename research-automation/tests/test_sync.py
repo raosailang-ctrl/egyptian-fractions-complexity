@@ -53,16 +53,16 @@ class SyncTests(unittest.TestCase):
 
     def test_extract_state_block_accepts_visible_markers(self):
         text = (
-            "before\\n"
-            "RESEARCH_STATE_BEGIN\\n"
-            "Next step: prove lemma\\n"
-            "Artifacts: report.md\\n"
-            "RESEARCH_STATE_END\\n"
+            "before\n"
+            "RESEARCH_STATE_BEGIN\n"
+            "Next step: prove lemma\n"
+            "Artifacts: report.md\n"
+            "RESEARCH_STATE_END\n"
             "after"
         )
         self.assertEqual(
             sync.extract_state_block(text),
-            "Next step: prove lemma\\nArtifacts: report.md",
+            "Next step: prove lemma\nArtifacts: report.md",
         )
 
     def test_prompt_builders_convert_legacy_html_markers_to_visible_text(self):

@@ -240,6 +240,16 @@ class SyncTests(unittest.TestCase):
                 "scoped_candidates": [],
                 "page_candidates": ["tag=button | text=attachment.md"],
                 "message_html": "<div>attachment</div>",
+                "selected_message_id": "msg-latest",
+                "assistant_message_count": 3,
+                "assistant_message_tail": [{
+                    "index": 2,
+                    "id": "msg-latest",
+                    "text_length": 24,
+                    "text_start": "Latest response",
+                    "text_end": "attachment.md",
+                    "button_labels": ["下载文件"],
+                }],
                 "download_attempts": [{
                     "metadata": "aria-label=下载文件",
                     "method": "no-download-observed",
@@ -276,6 +286,9 @@ class SyncTests(unittest.TestCase):
         self.assertIn("State block found: no", report)
         self.assertIn("Captured response without state marker.", report)
         self.assertIn("Page-wide candidate count: 1", report)
+        self.assertIn("Selected message id: msg-latest", report)
+        self.assertIn("Last assistant/message containers in DOM order", report)
+        self.assertIn("Latest response", report)
         self.assertIn("tag=button | text=attachment.md", report)
         self.assertIn("### Download attempts", report)
         self.assertIn("download event not fired", report)

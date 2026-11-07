@@ -179,7 +179,7 @@ def write_dry_run_diagnostic(
         "",
     ])
     target = round_dir / "dry-run-diagnostic.md"
-    target.write_text("\\n".join(lines), encoding="utf-8")
+    target.write_text("\n".join(lines), encoding="utf-8")
     return target
 
 

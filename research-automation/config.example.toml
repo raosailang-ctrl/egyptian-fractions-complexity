@@ -20,14 +20,14 @@ logs_dir = "C:/egypt fractions/chatgpt-automation-logs"
 [prompts]
 continue = """
 继续研究。先读取仓库中的 research_state.md 和最近一次提交，结合现有文件推进 Next step。完成后输出新的研究成果文件，并在回答末尾包含：
-<!-- RESEARCH_STATE_BEGIN -->
+RESEARCH_STATE_BEGIN
 Current question:
 Completed:
 Evidence:
 Open problems:
 Next step:
 Artifacts:
-<!-- RESEARCH_STATE_END -->
+RESEARCH_STATE_END
 """
 handoff = """
 上下文已接近上限。请从仓库中的 research_state.md 继续研究，不要重复已经完成的内容。仓库：raosailang-ctrl/egyptian-fractions-complexity。最近提交：{commit_sha}

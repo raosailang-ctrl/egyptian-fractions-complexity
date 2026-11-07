@@ -67,3 +67,8 @@ The helper stores this block only. It does not archive the full transcript.
 - Clean the repository and resolve Git conflicts before restarting.
 - If ChatGPT reaches its context limit, the helper opens a new conversation and sends the repository URL, last commit SHA, and `research_state.md`.
 - Browser data, staging files, logs, and local configuration remain outside Git.
+
+
+### Attachment diagnostics
+
+When an attachment is not downloaded, the dry-run report includes scoped and page-wide DOM candidate counts, candidate labels/attributes, and a truncated HTML snapshot of the latest assistant message. Review this local diagnostic before changing selectors. The scan is diagnostic only; it does not click page-wide candidates or download unrelated controls.

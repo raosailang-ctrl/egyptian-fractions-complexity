@@ -203,6 +203,37 @@ class SyncTests(unittest.TestCase):
         self.assertFalse((self.root / "research_state.md").exists())
         self.assertFalse((self.root / "result.md").exists())
 
+    def test_dry_run_writes_diagnostic_when_state_and_attachments_are_missing(self):
+        init_git_repo_with_file(self.root)
+
+        class FakeBrowser:
+            page = type("Page", (), {"url": "https://chatgpt.com/c/example"})()
+
+            def wait_for_response(self, previous_text=None):
+                return "Captured response without state marker."
+
+            def collect_downloads(self, destination):
+                destination.mkdir(parents=True, exist_ok=True)
+                return []
+
+            def send_prompt(self, prompt):
+                raise AssertionError("dry-run must not send a continuation prompt")
+
+        config = sync.Config(
+            repo_path=self.root,
+            chat_url="https://chatgpt.com/c/example",
+            staging_dir=self.root / "outside-staging",
+        )
+        result = sync.run_round(FakeBrowser(), config, dry_run=True)
+        self.assertEqual(result.changed_paths, ())
+        diagnostic = self.root / "outside-staging"
+        reports = list(diagnostic.glob("*/dry-run-diagnostic.md"))
+        self.assertEqual(len(reports), 1)
+        report = reports[0].read_text(encoding="utf-8")
+        self.assertIn("State block found: no", report)
+        self.assertIn("Captured response without state marker.", report)
+        self.assertFalse((self.root / "research_state.md").exists())
+
     def test_run_round_hands_off_when_context_is_exhausted(self):
         init_git_repo_with_file(self.root)
         events = []

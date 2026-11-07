@@ -77,3 +77,8 @@ When an attachment is not downloaded, the dry-run report includes scoped and pag
 ### Recent assistant-message selection diagnostics
 
 The dry-run report lists the last eight message containers in DOM order, including message IDs, text lengths, short text prefixes/suffixes, and button labels. This helps verify that the selected message is actually the latest assistant response before changing attachment selectors.
+
+
+### Attachment-bearing message selection
+
+The synchronizer keeps the latest assistant response as the source of the research-state block, but searches backward through the last eight rendered message containers for the most recent assistant message that actually contains a file preview/download control. This handles the common case where a follow-up explanatory assistant reply appears after the assistant message carrying the file. The download action hovers the file preview control and then looks for its revealed download button; it does not mistake opening the preview for a successful download.

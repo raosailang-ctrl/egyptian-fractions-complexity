@@ -390,7 +390,26 @@ class ChatGPTBrowser:
             raise BrowserError("Chrome CDP is connected but has no browser context.")
         self._context = contexts[0]
         pages = self._context.pages
-        self.page = pages[0] if pages else self._context.new_page()
+        chat_pages = [page for page in pages if (page.url or "").startswith("https://chatgpt.com")]
+        self.page = (chat_pages[-1] if chat_pages else pages[0]) if pages else self._context.new_page()
+        # A ChatGPT profile can contain both the normal conversation tab and a
+        # floating-chat tab.  The floating tab has a tall narrow composer and
+        # can block fill/Enter operations, so prefer a normal wide composer.
+        for page in pages:
+            try:
+                composer = page.locator(
+                    ("textarea, [contenteditable='true'], div[role='textbox']")
+                ).last
+                box = composer.bounding_box()
+            except Exception:
+                box = None
+            if box and box["width"] >= 300 and box["height"] <= 120:
+                self.page = page
+                break
+        try:
+            self.page.bring_to_front()
+        except Exception:
+            pass
         if not self.page.url or self.page.url == "about:blank":
             self.page.goto(self.chat_url, wait_until="domcontentloaded")
 
@@ -456,7 +475,14 @@ class ChatGPTBrowser:
         composer = self._composer()
         if composer is None:
             raise BrowserError("Cannot find the ChatGPT message composer.")
-        composer.fill(prompt)
+        try:
+            composer.fill(prompt, timeout=5000)
+        except Exception:
+            try:
+                composer.click(force=True, timeout=5000)
+                composer.press_sequentially(prompt, timeout=15000)
+            except Exception as exc:
+                raise BrowserError("Cannot edit the ChatGPT message composer.") from exc
         composer.press("Enter")
 
     def _stop_button_visible(self) -> bool:

@@ -372,6 +372,60 @@ class SyncTests(unittest.TestCase):
         self.assertEqual([path.name for path in files], ["verify_explicit_modular_sieve.py"])
         self.assertEqual(files[0].read_text(encoding="utf-8"), "result")
 
+    def test_collect_downloads_falls_back_to_browser_download_directory(self):
+        fallback_dir = self.root / "browser-downloads"
+        fallback_dir.mkdir()
+
+        class DownloadContext:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                return False
+
+        class AttachmentButton:
+            def get_attribute(self, name):
+                return None
+
+            def inner_text(self):
+                return "result.md"
+
+            def click(self):
+                (fallback_dir / "result.md").write_text("result", encoding="utf-8")
+                raise TimeoutError("CDP download event unavailable")
+
+        class Candidates:
+            def count(self):
+                return 1
+
+            def nth(self, index):
+                return AttachmentButton()
+
+        class Message:
+            def count(self):
+                return 1
+
+            def nth(self, index):
+                return self
+
+            def locator(self, selector):
+                return Candidates()
+
+        class Page:
+            def locator(self, selector):
+                return Message()
+
+            def expect_download(self, timeout):
+                return DownloadContext()
+
+        browser = sync.ChatGPTBrowser.__new__(sync.ChatGPTBrowser)
+        browser.page = Page()
+        browser.download_dir = fallback_dir
+        destination = self.root / "downloads"
+        files = browser.collect_downloads(destination)
+        self.assertEqual([path.name for path in files], ["result.md"])
+        self.assertEqual(files[0].read_text(encoding="utf-8"), "result")
+
 
 if __name__ == "__main__":
     unittest.main()

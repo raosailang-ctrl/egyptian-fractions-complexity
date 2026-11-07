@@ -355,11 +355,13 @@ class ChatGPTBrowser:
         cdp_port: int = 9222,
         response_timeout_seconds: int = 300,
         stable_poll_seconds: float = 2.0,
+        download_dir: Path | None = None,
     ) -> None:
         self.chat_url = chat_url
         self.cdp_port = cdp_port
         self.response_timeout_seconds = response_timeout_seconds
         self.stable_poll_seconds = stable_poll_seconds
+        self.download_dir = download_dir.resolve() if download_dir else None
         self._playwright = None
         self._browser = None
         self._context = None
@@ -495,6 +497,103 @@ class ChatGPTBrowser:
             self.page.wait_for_timeout(int(self.stable_poll_seconds * 1000))
         raise BrowserError("Timed out waiting for the ChatGPT response to finish.")
 
+    def _download_directories(self, destination: Path) -> tuple[Path, ...]:
+        directories = [destination]
+        configured_download_dir = getattr(self, "download_dir", None)
+        if configured_download_dir is not None:
+            directories.append(configured_download_dir)
+        # Chrome launched with --remote-debugging-port can ignore the command
+        # line download directory on some builds.  Its normal Windows fallback
+        # is the user's Downloads folder, so include it as a safe fallback.
+        directories.append(Path.home() / "Downloads")
+        unique: list[Path] = []
+        seen: set[Path] = set()
+        for directory in directories:
+            resolved = directory.resolve()
+            if resolved not in seen:
+                seen.add(resolved)
+                unique.append(resolved)
+        return tuple(unique)
+
+    @staticmethod
+    def _file_snapshot(directories: tuple[Path, ...]) -> dict[Path, tuple[int, int]]:
+        snapshot: dict[Path, tuple[int, int]] = {}
+        for directory in directories:
+            if not directory.is_dir():
+                continue
+            try:
+                entries = directory.iterdir()
+            except OSError:
+                continue
+            for path in entries:
+                if not path.is_file() or path.name.lower().endswith((".crdownload", ".part", ".tmp")):
+                    continue
+                try:
+                    stat = path.stat()
+                except OSError:
+                    continue
+                snapshot[path] = (stat.st_size, stat.st_mtime_ns)
+        return snapshot
+
+    def _wait_for_fallback_download(
+        self,
+        directories: tuple[Path, ...],
+        before: dict[Path, tuple[int, int]],
+        timeout_seconds: float = 3.0,
+    ) -> Path | None:
+        deadline = time.monotonic() + timeout_seconds
+        stable_candidate: Path | None = None
+        stable_size: int | None = None
+        stable_count = 0
+        while time.monotonic() < deadline:
+            after = self._file_snapshot(directories)
+            candidates = [
+                (path, values)
+                for path, values in after.items()
+                if path not in before or before[path] != values
+            ]
+            if candidates:
+                path, (size, _) = max(candidates, key=lambda item: item[1][1])
+                if path == stable_candidate and size == stable_size:
+                    stable_count += 1
+                else:
+                    stable_candidate = path
+                    stable_size = size
+                    stable_count = 1
+                if stable_count >= 2 and size > 0:
+                    return path
+            time.sleep(0.25)
+        return None
+
+    @staticmethod
+    def _unique_target(destination: Path, name: str) -> Path:
+        target = destination / Path(name).name
+        counter = 2
+        while target.exists():
+            target = destination / f"{target.stem}-{counter}{target.suffix}"
+            counter += 1
+        return target
+
+    def _click_candidate(self, candidate) -> None:
+        """Click a file control after activating its hover-only toolbar."""
+        try:
+            candidate.hover(timeout=3000)
+        except Exception:
+            pass
+        mouse = getattr(self.page, "mouse", None)
+        if mouse is not None:
+            try:
+                box = candidate.bounding_box()
+                if box:
+                    x = box["x"] + box["width"] / 2
+                    y = box["y"] + box["height"] / 2
+                    mouse.move(x, y)
+                    mouse.click(x, y)
+                    return
+            except Exception:
+                pass
+        candidate.click()
+
     def collect_downloads(self, destination: Path) -> list[Path]:
         if self.page is None:
             raise BrowserError("Browser is not connected.")
@@ -524,6 +623,7 @@ class ChatGPTBrowser:
             flags=re.IGNORECASE,
         )
         downloaded: list[Path] = []
+        download_directories = self._download_directories(destination)
         seen_candidates: set[tuple[str, str]] = set()
         direct: list[tuple[Any, str, str, str]] = []
         deferred: list[tuple[Any, str, str, str]] = []
@@ -583,19 +683,24 @@ class ChatGPTBrowser:
                 continue
             if href or filename_match:
                 seen_candidates.add(identity)
+            before = self._file_snapshot(download_directories)
             try:
-                with self.page.expect_download(timeout=5000) as download_info:
-                    candidate.click()
+                with self.page.expect_download(timeout=3000) as download_info:
+                    self._click_candidate(candidate)
                 download = download_info.value
-                target = destination / download.suggested_filename
-                counter = 2
-                while target.exists():
-                    target = destination / f"{target.stem}-{counter}{target.suffix}"
-                    counter += 1
+                target = self._unique_target(destination, download.suggested_filename)
                 download.save_as(str(target))
                 downloaded.append(target)
             except Exception:
-                continue
+                fallback = self._wait_for_fallback_download(download_directories, before)
+                if fallback is None:
+                    continue
+                target = self._unique_target(destination, fallback.name)
+                try:
+                    shutil.copy2(fallback, target)
+                except OSError:
+                    continue
+                downloaded.append(target)
         return downloaded
 
     def open_new_conversation(self) -> None:
@@ -692,7 +797,9 @@ def run_round(
         staging_root = config.repo_path / staging_root
     staging_root.mkdir(parents=True, exist_ok=True)
     round_dir = staging_root / time.strftime("%Y%m%d-%H%M%S")
+    print("正在收集最新回复的附件…", flush=True)
     downloaded = browser.collect_downloads(round_dir)
+    print(f"附件收集完成：{len(downloaded)} 个", flush=True)
     mark("collect")
     state_text = extract_state_block(response)
     if dry_run:
@@ -760,9 +867,11 @@ def run_loop(config_path: Path, once: bool = False, rounds: int = 0, dry_run: bo
         cdp_port=config.cdp_port,
         response_timeout_seconds=config.response_timeout_seconds,
         stable_poll_seconds=config.stable_poll_seconds,
+        download_dir=config.download_dir,
     )
     browser.connect()
     try:
+        print("已连接 ChatGPT，等待最新回复…", flush=True)
         browser.wait_for_login()
         if browser.page is not None and config.chat_url.rstrip("/") not in browser.page.url:
             browser.page.goto(config.chat_url, wait_until="domcontentloaded")
@@ -781,6 +890,11 @@ def run_loop(config_path: Path, once: bool = False, rounds: int = 0, dry_run: bo
             )
             completed += 1
             previous_response_text = result.response_text
+            print(
+                f"第 {completed} 轮完成：下载 {len(result.changed_paths)} 个变更，"
+                f"提交 {result.commit_sha or '无'}",
+                flush=True,
+            )
             _json_log(
                 log_path,
                 "round_complete",

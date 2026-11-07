@@ -749,11 +749,10 @@ class ChatGPTBrowser:
         message, attachment_message_index = self._latest_attachment_locator()
         if message is None:
             message = latest_message
-        # Generated files are currently rendered as file cards.  Depending on
-        # the ChatGPT build, the card itself may be an anchor, a button, or a
-        # role=button element, and the visible filename may be the only useful
-        # metadata.  Keep the search scoped to the latest assistant message so
-        # old rounds are not downloaded again.
+        # The latest assistant response may be text-only even when the
+        # immediately preceding assistant response carries a file.  Search
+        # backward for the newest attachment-bearing message, then keep all
+        # candidate clicks scoped to that one message.
         selector = (
             "a, button, [role='button'], "
             "[data-testid*='file'], [data-testid*='attachment'], "

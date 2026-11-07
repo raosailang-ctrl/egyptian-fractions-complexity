@@ -137,6 +137,10 @@ class SyncTests(unittest.TestCase):
 
     def test_run_round_publishes_state_before_continuation(self):
         init_git_repo_with_file(self.root)
+        remote = self.root / "remote.git"
+        subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+        subprocess.run(["git", "-C", str(self.root), "remote", "add", "origin", str(remote)], check=True)
+        subprocess.run(["git", "-C", str(self.root), "push", "-qu", "origin", "main"], check=True)
         events = []
 
         class FakeBrowser:
@@ -163,10 +167,41 @@ class SyncTests(unittest.TestCase):
             continue_prompt="continue",
             handoff_prompt="handoff {commit_sha} {state_text}",
         )
-        result = sync.run_round(FakeBrowser(), config, dry_run=True, events=events)
+        result = sync.run_round(FakeBrowser(), config, dry_run=False, events=events)
         self.assertFalse(result.context_handoff)
-        self.assertEqual(events, ["response", "collect", "dry_run_skip_continue"])
+        self.assertEqual(events, ["response", "collect", "continue"])
         self.assertIn("Next step: check lemma", (self.root / "research_state.md").read_text(encoding="utf-8"))
+
+    def test_dry_run_does_not_modify_repository_files(self):
+        init_git_repo_with_file(self.root)
+        events = []
+
+        class FakeBrowser:
+            def wait_for_response(self, previous_text=None):
+                return (
+                    "artifact result\n"
+                    "<!-- RESEARCH_STATE_BEGIN -->\n"
+                    "Next step: check lemma\n"
+                    "<!-- RESEARCH_STATE_END -->"
+                )
+
+            def collect_downloads(self, destination):
+                destination.mkdir(parents=True, exist_ok=True)
+                artifact = destination / "result.md"
+                artifact.write_text("result", encoding="utf-8")
+                return [artifact]
+
+            def send_prompt(self, prompt):
+                raise AssertionError("dry-run must not send a continuation prompt")
+
+            def open_new_conversation(self):
+                raise AssertionError("dry-run must not open a new conversation")
+
+        config = sync.Config(repo_path=self.root, chat_url="https://chatgpt.com/")
+        sync.run_round(FakeBrowser(), config, dry_run=True, events=events)
+        self.assertEqual(events, ["response", "collect", "dry_run_skip_continue"])
+        self.assertFalse((self.root / "research_state.md").exists())
+        self.assertFalse((self.root / "result.md").exists())
 
     def test_run_round_hands_off_when_context_is_exhausted(self):
         init_git_repo_with_file(self.root)

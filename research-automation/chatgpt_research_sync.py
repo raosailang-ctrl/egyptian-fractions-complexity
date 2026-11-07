@@ -618,12 +618,24 @@ def run_round(
     round_dir = staging_root / time.strftime("%Y%m%d-%H%M%S")
     downloaded = browser.collect_downloads(round_dir)
     mark("collect")
+    state_text = extract_state_block(response)
+    if dry_run:
+        if not downloaded and not state_text:
+            raise SyncError("The response contained no downloadable artifacts or research state.")
+        verifier_results = run_verifiers(config.repo_path, [], config.verify_commands, dry_run=True)
+        mark("dry_run_skip_continue")
+        return RoundResult(
+            changed_paths=tuple(downloaded),
+            verifier_results=tuple(verifier_results),
+            commit_sha=_head_sha(config.repo_path),
+            response_text=response,
+        )
+
     changed: list[Path] = []
     allowed = set(config.allowed_suffixes)
     for artifact in downloaded:
         changed.extend(copy_artifact(artifact, config.repo_path, allowed))
 
-    state_text = extract_state_block(response)
     state_updated = False
     if state_text:
         changed.append(write_research_state(config.repo_path, state_text))

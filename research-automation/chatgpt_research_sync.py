@@ -723,7 +723,7 @@ class ChatGPTBrowser:
                     if value:
                         values.append(f"{attribute}={value}")
                 try:
-                    label = re.sub(r"\\s+", " ", candidate.inner_text().strip())
+                    label = re.sub(r"\s+", " ", candidate.inner_text().strip())
                 except Exception:
                     label = ""
                 if label:

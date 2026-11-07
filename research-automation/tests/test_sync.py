@@ -135,6 +135,77 @@ class SyncTests(unittest.TestCase):
         browser = sync.ChatGPTBrowser.__new__(sync.ChatGPTBrowser)
         self.assertEqual(browser.latest_assistant_text(Page()), "latest assistant result")
 
+    def test_run_round_publishes_state_before_continuation(self):
+        init_git_repo_with_file(self.root)
+        events = []
+
+        class FakeBrowser:
+            def wait_for_response(self):
+                return (
+                    "artifact result\n"
+                    "<!-- RESEARCH_STATE_BEGIN -->\n"
+                    "Next step: check lemma\n"
+                    "<!-- RESEARCH_STATE_END -->"
+                )
+
+            def collect_downloads(self, destination):
+                return []
+
+            def send_prompt(self, prompt):
+                pass
+
+            def open_new_conversation(self):
+                pass
+
+        config = sync.Config(
+            repo_path=self.root,
+            chat_url="https://chatgpt.com/",
+            continue_prompt="continue",
+            handoff_prompt="handoff {commit_sha} {state_text}",
+        )
+        result = sync.run_round(FakeBrowser(), config, dry_run=True, events=events)
+        self.assertFalse(result.context_handoff)
+        self.assertEqual(events, ["response", "collect", "dry_run_skip_continue"])
+        self.assertIn("Next step: check lemma", (self.root / "research_state.md").read_text(encoding="utf-8"))
+
+    def test_run_round_hands_off_when_context_is_exhausted(self):
+        init_git_repo_with_file(self.root)
+        events = []
+
+        class FakeBrowser:
+            def wait_for_response(self):
+                return "The conversation is too long to continue."
+
+            def collect_downloads(self, destination):
+                return []
+
+            def open_new_conversation(self):
+                pass
+
+            def send_prompt(self, prompt):
+                pass
+
+        config = sync.Config(
+            repo_path=self.root,
+            chat_url="https://chatgpt.com/",
+            continue_prompt="continue",
+            handoff_prompt="handoff {commit_sha} {state_text}",
+        )
+        result = sync.run_round(FakeBrowser(), config, dry_run=False, events=events)
+        self.assertTrue(result.context_handoff)
+        self.assertEqual(events[0:2], ["response", "new"])
+        self.assertEqual(events[2][0], "handoff")
+
+    def test_prompt_builders_insert_state_and_commit(self):
+        self.assertEqual(
+            sync.build_continue_prompt("state", "abc123", "continue {commit_sha} {state_text}"),
+            "continue abc123 state",
+        )
+        self.assertEqual(
+            sync.build_handoff_prompt("state", "abc123", "handoff {commit_sha} {state_text}"),
+            "handoff abc123 state",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

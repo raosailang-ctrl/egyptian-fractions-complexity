@@ -33,6 +33,15 @@ class CommandResult:
     stderr: str = ""
 
 
+@dataclass(frozen=True)
+class RoundResult:
+    changed_paths: tuple[Path, ...] = ()
+    verifier_results: tuple[CommandResult, ...] = ()
+    commit_sha: str | None = None
+    context_handoff: bool = False
+    state_updated: bool = False
+
+
 STATE_BEGIN = "<!-- RESEARCH_STATE_BEGIN -->"
 STATE_END = "<!-- RESEARCH_STATE_END -->"
 DEFAULT_ALLOWED_SUFFIXES = (
@@ -529,8 +538,158 @@ def _json_log(path: Path, event: str, **fields: Any) -> None:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
+def _head_sha(repo_root: Path) -> str | None:
+    result = _git(repo_root, "rev-parse", "HEAD", check=False)
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def build_continue_prompt(
+    state_text: str,
+    commit_sha: str | None,
+    template: str | None = None,
+) -> str:
+    base = template or (
+        "继续研究。先读取仓库中的 research_state.md 和最近一次提交，"
+        "结合现有文件推进 Next step。完成后输出新的成果文件，并在回答末尾包含状态标记。"
+    )
+    return base.replace("{commit_sha}", commit_sha or "unknown").replace("{state_text}", state_text)
+
+
+def build_handoff_prompt(
+    state_text: str,
+    commit_sha: str | None,
+    template: str | None = None,
+) -> str:
+    base = template or (
+        "上下文已接近上限。请从仓库中的 research_state.md 继续研究，"
+        "不要重复已经完成的内容。最近提交：{commit_sha}\n\n当前状态：\n{state_text}"
+    )
+    return base.replace("{commit_sha}", commit_sha or "unknown").replace("{state_text}", state_text)
+
+
+def run_round(
+    browser: ChatGPTBrowser,
+    config: Config,
+    dry_run: bool = False,
+    events: list[Any] | None = None,
+) -> RoundResult:
+    """Process one completed response and send exactly one follow-up prompt."""
+    def mark(event: Any) -> None:
+        if events is not None:
+            events.append(event)
+
+    response = browser.wait_for_response()
+    mark("response")
+    if context_limit_detected(response):
+        state_path = config.repo_path / "research_state.md"
+        state_text = state_path.read_text(encoding="utf-8") if state_path.exists() else ""
+        if dry_run:
+            mark("dry_run_skip_handoff")
+        else:
+            browser.open_new_conversation()
+            mark("new")
+            prompt = build_handoff_prompt(state_text, _head_sha(config.repo_path), config.handoff_prompt)
+            browser.send_prompt(prompt)
+            mark(("handoff", prompt))
+        return RoundResult(commit_sha=_head_sha(config.repo_path), context_handoff=True)
+
+    staging_root = config.staging_dir
+    if not staging_root.is_absolute():
+        staging_root = config.repo_path / staging_root
+    staging_root.mkdir(parents=True, exist_ok=True)
+    round_dir = staging_root / time.strftime("%Y%m%d-%H%M%S")
+    downloaded = browser.collect_downloads(round_dir)
+    mark("collect")
+    changed: list[Path] = []
+    allowed = set(config.allowed_suffixes)
+    for artifact in downloaded:
+        changed.extend(copy_artifact(artifact, config.repo_path, allowed))
+
+    state_text = extract_state_block(response)
+    state_updated = False
+    if state_text:
+        changed.append(write_research_state(config.repo_path, state_text))
+        state_updated = True
+    if not changed:
+        raise SyncError("The response contained no downloadable artifacts or research state.")
+
+    verifier_results = run_verifiers(config.repo_path, changed, config.verify_commands, dry_run=dry_run)
+    commit_message = f"Sync ChatGPT research round {time.strftime('%Y-%m-%d %H:%M:%S')}"
+    commit_sha = commit_and_push(
+        config.repo_path,
+        config.remote,
+        config.branch,
+        changed,
+        commit_message,
+        dry_run=dry_run,
+    )
+    state_for_prompt = state_text or (config.repo_path / "research_state.md").read_text(encoding="utf-8")
+    if dry_run:
+        mark("dry_run_skip_continue")
+    else:
+        browser.send_prompt(build_continue_prompt(state_for_prompt, commit_sha, config.continue_prompt))
+        mark("continue")
+    return RoundResult(
+        changed_paths=tuple(sorted(set(changed))),
+        verifier_results=tuple(verifier_results),
+        commit_sha=commit_sha,
+        state_updated=state_updated,
+    )
+
+
+def run_loop(config_path: Path, once: bool = False, rounds: int = 0, dry_run: bool = False) -> None:
+    config = load_config(config_path)
+    if not config.repo_path.is_dir():
+        raise SyncError(f"Repository path does not exist: {config.repo_path}")
+    if not dry_run and not working_tree_is_clean(config.repo_path):
+        raise SyncError("Repository has uncommitted changes; clean the worktree before automation.")
+    if not dry_run:
+        _git(config.repo_path, "pull", "--ff-only", config.remote, config.branch)
+
+    config.logs_dir.mkdir(parents=True, exist_ok=True)
+    log_path = config.logs_dir / "research-sync.jsonl"
+    browser = ChatGPTBrowser(
+        config.chat_url,
+        cdp_port=config.cdp_port,
+        response_timeout_seconds=config.response_timeout_seconds,
+        stable_poll_seconds=config.stable_poll_seconds,
+    )
+    browser.connect()
+    try:
+        browser.wait_for_login()
+        if browser.page is not None and config.chat_url.rstrip("/") not in browser.page.url:
+            browser.page.goto(config.chat_url, wait_until="domcontentloaded")
+        completed = 0
+        while True:
+            if once and completed >= 1:
+                break
+            if not once and rounds > 0 and completed >= rounds:
+                break
+            result = run_round(browser, config, dry_run=dry_run)
+            completed += 1
+            _json_log(
+                log_path,
+                "round_complete",
+                commit_sha=result.commit_sha,
+                changed_paths=[str(path) for path in result.changed_paths],
+                context_handoff=result.context_handoff,
+                dry_run=dry_run,
+            )
+    finally:
+        browser.close()
+
+
 def main() -> int:
-    raise SystemExit("Browser orchestration is added in the next implementation task.")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Sync ChatGPT research artifacts to GitHub.")
+    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--once", action="store_true", help="Process one response and stop.")
+    parser.add_argument("--rounds", type=int, default=0, help="Process N rounds; zero means continuous.")
+    parser.add_argument("--dry-run", action="store_true", help="Skip Git mutation and follow-up prompts.")
+    args = parser.parse_args()
+    run_loop(args.config, once=args.once, rounds=args.rounds, dry_run=args.dry_run)
+    return 0
 
 
 if __name__ == "__main__":

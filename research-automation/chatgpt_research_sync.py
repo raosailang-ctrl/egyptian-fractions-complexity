@@ -139,6 +139,49 @@ def extract_state_block(text: str) -> str | None:
     match = re.search(pattern, text, flags=re.DOTALL)
     return match.group(1).strip() if match else None
 
+def write_dry_run_diagnostic(
+    round_dir: Path,
+    browser: Any,
+    response: str,
+    downloaded: Iterable[Path],
+    state_text: str | None,
+) -> Path:
+    """Write a local-only report so a failed dry-run can be diagnosed safely."""
+    round_dir.mkdir(parents=True, exist_ok=True)
+    page = getattr(browser, "page", None)
+    page_url = getattr(page, "url", "(page URL unavailable)")
+    files = list(downloaded)
+    lines = [
+        "# ChatGPT research dry-run diagnostic",
+        "",
+        f"- Page URL: {page_url}",
+        f"- Assistant response characters: {len(response)}",
+        f"- State block found: {'yes' if state_text is not None else 'no'}",
+        f"- Downloaded attachments: {len(files)}",
+        "",
+        "## Downloaded files",
+        "",
+    ]
+    if files:
+        for path in files:
+            try:
+                size = path.stat().st_size
+            except OSError:
+                size = "unavailable"
+            lines.append(f"- {path.name} ({size} bytes)")
+    else:
+        lines.append("- None")
+    lines.extend([
+        "",
+        "## Latest assistant response captured by the synchronizer",
+        "",
+        response,
+        "",
+    ])
+    target = round_dir / "dry-run-diagnostic.md"
+    target.write_text("\\n".join(lines), encoding="utf-8")
+    return target
+
 
 def context_limit_detected(text: str) -> bool:
     normalized = re.sub(r"\s+", " ", text.lower())
@@ -829,8 +872,21 @@ def run_round(
     mark("collect")
     state_text = extract_state_block(response)
     if dry_run:
+        diagnostic_path = write_dry_run_diagnostic(
+            round_dir, browser, response, downloaded, state_text
+        )
+        print(
+            f"Dry-run diagnostic saved: {diagnostic_path} "
+            f"(state_block={'yes' if state_text is not None else 'no'}, attachments={len(downloaded)})",
+            flush=True,
+        )
         if not downloaded and not state_text:
-            raise SyncError("The response contained no downloadable artifacts or research state.")
+            print(
+                "WARNING: the captured latest assistant message contained neither "
+                "a research-state block nor downloadable attachments. "
+                "Review dry-run-diagnostic.md and confirm chat_url/tab selection.",
+                flush=True,
+            )
         verifier_results = run_verifiers(config.repo_path, [], config.verify_commands, dry_run=True)
         mark("dry_run_skip_continue")
         return RoundResult(

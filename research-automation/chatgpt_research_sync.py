@@ -212,6 +212,8 @@ def write_dry_run_diagnostic(
             lines.append(f"  - Result file: {attempt.get('fallback_file') or '(none)'}")
             if attempt.get("control_html"):
                 lines.extend(["  - Control HTML:", "    ```html", "    " + attempt["control_html"].replace("\\n", " "), "    ```"])
+            if attempt.get("preview_control_html"):
+                lines.extend(["  - Preview control HTML:", "    ```html", "    " + attempt["preview_control_html"].replace("\\n", " "), "    ```"])
         if scan.get("message_html"):
             lines.extend(["", "### Latest assistant container HTML (truncated)", "", "```html", scan["message_html"], "```"])
     else:
@@ -907,9 +909,6 @@ class ChatGPTBrowser:
         # deferred filename cards as their fallback.
         records = direct or deferred
         for candidate, href, label, metadata in records:
-            # Do not click a filename card after its dedicated download control
-            # has already succeeded.  Generic controls such as "下载文件" have
-            # no stable filename, so they are intentionally not deduplicated.
             filename_match = filename_pattern.search(metadata)
             identity = (
                 href.lower(),
@@ -928,29 +927,75 @@ class ChatGPTBrowser:
                 "enabled": None,
                 "bounding_box": None,
                 "control_html": "",
+                "preview_control_html": "",
                 "error": "",
                 "fallback_file": "",
             }
+            action_candidate = candidate
+            normalized = metadata.lower()
+            is_preview = "预览" in normalized or "preview" in normalized
+            if is_preview and not href:
+                try:
+                    candidate.hover(timeout=3000)
+                    self.page.wait_for_timeout(350)
+                    attempt["preview_control_html"] = candidate.evaluate(
+                        "(el) => el.outerHTML.slice(0, 3000)"
+                    )
+                except Exception as exc:
+                    attempt["error"] = f"preview hover: {type(exc).__name__}: {exc}"
+                download_controls = message.locator(
+                    "button[aria-label*='下载文件'], "
+                    "button[aria-label*='Download' i], "
+                    "[role='button'][aria-label*='下载文件'], "
+                    "[data-testid*='download']"
+                )
+                revealed = None
+                for control_index in range(download_controls.count() - 1, -1, -1):
+                    control = download_controls.nth(control_index)
+                    try:
+                        if control.is_visible() and control.is_enabled():
+                            revealed = control
+                            break
+                    except Exception:
+                        continue
+                if revealed is None:
+                    attempt["method"] = "preview-hover-no-download-control"
+                    attempt["error"] = (
+                        attempt["error"] + "; " if attempt["error"] else ""
+                    ) + "No visible enabled download control appeared after hovering the file preview card."
+                    scan["download_attempts"].append(attempt)
+                    continue
+                action_candidate = revealed
+                try:
+                    attempt["metadata"] = (
+                        revealed.get_attribute("aria-label")
+                        or revealed.inner_text().strip()
+                        or "revealed download control"
+                    )
+                except Exception:
+                    attempt["metadata"] = "revealed download control"
             try:
-                attempt["visible"] = candidate.is_visible()
+                attempt["visible"] = action_candidate.is_visible()
             except Exception as exc:
                 attempt["visible"] = f"error: {type(exc).__name__}: {exc}"
             try:
-                attempt["enabled"] = candidate.is_enabled()
+                attempt["enabled"] = action_candidate.is_enabled()
             except Exception as exc:
                 attempt["enabled"] = f"error: {type(exc).__name__}: {exc}"
             try:
-                attempt["bounding_box"] = candidate.bounding_box()
+                attempt["bounding_box"] = action_candidate.bounding_box()
             except Exception as exc:
                 attempt["bounding_box"] = f"error: {type(exc).__name__}: {exc}"
             try:
-                attempt["control_html"] = candidate.evaluate("(el) => el.outerHTML.slice(0, 3000)")
+                attempt["control_html"] = action_candidate.evaluate(
+                    "(el) => el.outerHTML.slice(0, 3000)"
+                )
             except Exception as exc:
                 attempt["control_html"] = f"unavailable: {type(exc).__name__}: {exc}"
             before = self._file_snapshot(download_directories)
             try:
-                with self.page.expect_download(timeout=5000) as download_info:
-                    self._click_candidate(candidate)
+                with self.page.expect_download(timeout=7000) as download_info:
+                    self._click_candidate(action_candidate)
                 download = download_info.value
                 target = self._unique_target(destination, download.suggested_filename)
                 download.save_as(str(target))
@@ -958,8 +1003,12 @@ class ChatGPTBrowser:
                 attempt["method"] = "playwright-download"
                 attempt["fallback_file"] = str(target)
             except Exception as exc:
-                attempt["error"] = f"{type(exc).__name__}: {exc}"
-                fallback = self._wait_for_fallback_download(download_directories, before, timeout_seconds=5.0)
+                attempt["error"] = (
+                    attempt["error"] + "; " if attempt["error"] else ""
+                ) + f"{type(exc).__name__}: {exc}"
+                fallback = self._wait_for_fallback_download(
+                    download_directories, before, timeout_seconds=5.0
+                )
                 if fallback is None:
                     attempt["method"] = "no-download-observed"
                     scan["download_attempts"].append(attempt)

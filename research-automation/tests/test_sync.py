@@ -30,6 +30,7 @@ def init_git_repo_with_file(root: Path) -> None:
     subprocess.run(["git", "-C", str(root), "config", "user.name", "Test User"], check=True)
     subprocess.run(["git", "-C", str(root), "add", "tracked.md"], check=True)
     subprocess.run(["git", "-C", str(root), "commit", "-qm", "initial"], check=True)
+    subprocess.run(["git", "-C", str(root), "branch", "-M", "main"], check=True)
 
 
 class SyncTests(unittest.TestCase):
@@ -74,6 +75,41 @@ class SyncTests(unittest.TestCase):
         init_git_repo_with_file(self.root)
         (self.root / "changed.md").write_text("changed", encoding="utf-8")
         self.assertFalse(sync.working_tree_is_clean(self.root))
+
+    def test_write_research_state_replaces_file(self):
+        state_path = sync.write_research_state(self.root, "Next step: prove lemma")
+        self.assertEqual(state_path, self.root / "research_state.md")
+        self.assertEqual(state_path.read_text(encoding="utf-8"), "Next step: prove lemma\n")
+
+    def test_run_verifiers_raises_when_command_fails(self):
+        init_git_repo_with_file(self.root)
+        command = f'"{sys.executable}" -c "raise SystemExit(2)"'
+        with self.assertRaises(sync.VerificationError):
+            sync.run_verifiers(self.root, [], [command], dry_run=False)
+
+    def test_commit_and_push_updates_bare_remote(self):
+        init_git_repo_with_file(self.root)
+        remote = self.root / "remote.git"
+        subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+        subprocess.run(["git", "-C", str(self.root), "remote", "add", "origin", str(remote)], check=True)
+        subprocess.run(["git", "-C", str(self.root), "push", "-qu", "origin", "main"], check=True)
+        artifact = self.root / "result.md"
+        artifact.write_text("result", encoding="utf-8")
+        sha = sync.commit_and_push(
+            self.root,
+            "origin",
+            "main",
+            [artifact],
+            "Update research result",
+            dry_run=False,
+        )
+        remote_sha = subprocess.run(
+            ["git", "--git-dir", str(remote), "rev-parse", "refs/heads/main"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        self.assertEqual(sha, remote_sha)
 
 
 if __name__ == "__main__":

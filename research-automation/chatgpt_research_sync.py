@@ -24,6 +24,14 @@ class BrowserError(SyncError):
     """Raised when the browser cannot provide a usable ChatGPT page."""
 
 
+@dataclass(frozen=True)
+class CommandResult:
+    command: str
+    returncode: int
+    stdout: str = ""
+    stderr: str = ""
+
+
 STATE_BEGIN = "<!-- RESEARCH_STATE_BEGIN -->"
 STATE_END = "<!-- RESEARCH_STATE_END -->"
 DEFAULT_ALLOWED_SUFFIXES = (
@@ -229,6 +237,86 @@ def working_tree_is_clean(repo_root: Path) -> bool:
         text=True,
     )
     return not result.stdout.strip()
+
+
+def write_research_state(repo_root: Path, state_text: str) -> Path:
+    """Persist the compact state protocol at the repository root."""
+    target = repo_root / "research_state.md"
+    target.write_text(state_text.rstrip() + "\n", encoding="utf-8")
+    return target
+
+
+def run_verifiers(
+    repo_root: Path,
+    changed_paths: list[Path],
+    commands: list[str] | tuple[str, ...],
+    dry_run: bool = False,
+) -> list[CommandResult]:
+    """Run only explicitly configured verifier commands."""
+    del changed_paths  # The allowlist is configured by the user, not inferred from filenames.
+    results: list[CommandResult] = []
+    for command in commands:
+        if dry_run:
+            results.append(CommandResult(command, 0, "DRY_RUN", ""))
+            continue
+        completed = subprocess.run(
+            command,
+            cwd=repo_root,
+            shell=True,
+            capture_output=True,
+            text=True,
+        )
+        result = CommandResult(command, completed.returncode, completed.stdout, completed.stderr)
+        results.append(result)
+        if completed.returncode != 0:
+            details = (completed.stderr or completed.stdout).strip()
+            raise VerificationError(f"Verifier failed ({completed.returncode}): {command}\n{details}")
+    return results
+
+
+def _git(repo_root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(repo_root), *args],
+        check=check,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _relative_git_paths(repo_root: Path, paths: Iterable[Path]) -> list[str]:
+    root = repo_root.resolve()
+    relative: list[str] = []
+    for path in paths:
+        resolved = path.resolve()
+        if resolved != root and root not in resolved.parents:
+            raise SyncError(f"Cannot stage a path outside the repository: {path}")
+        relative.append(resolved.relative_to(root).as_posix())
+    return sorted(set(relative))
+
+
+def commit_and_push(
+    repo_root: Path,
+    remote: str,
+    branch: str,
+    paths: list[Path],
+    message: str,
+    dry_run: bool = False,
+) -> str | None:
+    """Stage exact paths, create one commit, push it, and return its SHA."""
+    relative = _relative_git_paths(repo_root, paths)
+    if not relative:
+        return _git(repo_root, "rev-parse", "HEAD").stdout.strip()
+    if dry_run:
+        return _git(repo_root, "rev-parse", "HEAD").stdout.strip()
+
+    _git(repo_root, "pull", "--ff-only", remote, branch)
+    _git(repo_root, "add", "--", *relative)
+    staged = _git(repo_root, "diff", "--cached", "--quiet", check=False)
+    if staged.returncode == 0:
+        return _git(repo_root, "rev-parse", "HEAD").stdout.strip()
+    _git(repo_root, "commit", "-m", message)
+    _git(repo_root, "push", remote, branch)
+    return _git(repo_root, "rev-parse", "HEAD").stdout.strip()
 
 
 def _json_log(path: Path, event: str, **fields: Any) -> None:

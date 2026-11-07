@@ -81,7 +81,7 @@ Use `unittest` helpers instead of adding pytest as a runtime dependency. The tes
 Run:
 
 ```powershell
-python -m unittest research-automation.tests.test_sync -v
+python -m unittest discover -s research-automation/tests -p "test_*.py" -v
 ```
 
 Expected: import or missing-function failures because the primitives are not implemented yet.
@@ -95,7 +95,7 @@ Create a `Config` dataclass with repository, browser, directory, Git, and prompt
 Run:
 
 ```powershell
-python -m unittest research-automation.tests.test_sync -v
+python -m unittest discover -s research-automation/tests -p "test_*.py" -v
 ```
 
 Expected: all archive, state, and clean-tree tests pass.
@@ -126,7 +126,7 @@ Cover state replacement, command failure, selected-path staging, and commit mess
 - [ ] **Step 2: Run the focused tests and confirm they fail**
 
 ```powershell
-python -m unittest research-automation.tests.test_sync -v
+python -m unittest discover -s research-automation/tests -p "test_*.py" -v
 ```
 
 - [ ] **Step 3: Implement state and Git operations**
@@ -140,7 +140,7 @@ Create `research_state.md` with the six required headings: `Current question`, `
 - [ ] **Step 5: Run tests and commit**
 
 ```powershell
-python -m unittest research-automation.tests.test_sync -v
+python -m unittest discover -s research-automation/tests -p "test_*.py" -v
 git add research-automation/chatgpt_research_sync.py research-automation/tests/test_sync.py research_state.md
 git commit -m "Add research state and verified Git publishing"
 ```
@@ -168,7 +168,7 @@ Test that the adapter recognizes a completed response, extracts assistant text f
 - [ ] **Step 2: Run adapter tests and confirm they fail**
 
 ```powershell
-python -m unittest research-automation.tests.test_sync -v
+python -m unittest discover -s research-automation/tests -p "test_*.py" -v
 ```
 
 - [ ] **Step 3: Implement CDP connection**
@@ -182,7 +182,7 @@ For each link whose href begins with `sandbox:` or whose text contains `download
 - [ ] **Step 5: Run tests and commit**
 
 ```powershell
-python -m unittest research-automation.tests.test_sync -v
+python -m unittest discover -s research-automation/tests -p "test_*.py" -v
 git add research-automation/chatgpt_research_sync.py research-automation/tests/test_sync.py
 git commit -m "Add Playwright ChatGPT browser adapter"
 ```
@@ -207,7 +207,7 @@ Test that a successful round follows the order `collect -> overlay -> state -> v
 - [ ] **Step 2: Run orchestration tests and confirm they fail**
 
 ```powershell
-python -m unittest research-automation.tests.test_sync -v
+python -m unittest discover -s research-automation/tests -p "test_*.py" -v
 ```
 
 - [ ] **Step 3: Implement one-round orchestration**
@@ -221,7 +221,7 @@ When context-limit detection returns true, open `https://chatgpt.com/?new=true`,
 - [ ] **Step 5: Run tests and commit**
 
 ```powershell
-python -m unittest research-automation.tests.test_sync -v
+python -m unittest discover -s research-automation/tests -p "test_*.py" -v
 git add research-automation/chatgpt_research_sync.py research-automation/tests/test_sync.py research-automation/config.example.toml
 git commit -m "Add research rounds and context handoff"
 ```
@@ -249,7 +249,7 @@ Explain `pip install -r research-automation/requirements.txt`, first login in th
 - [ ] **Step 4: Run offline tests and commit**
 
 ```powershell
-python -m unittest research-automation.tests.test_sync -v
+python -m unittest discover -s research-automation/tests -p "test_*.py" -v
 git diff --check
 git add research-automation/start_chatgpt_research.ps1 research-automation/README.md research-automation/config.example.toml .gitignore
 git commit -m "Add Windows launcher and research automation instructions"
@@ -280,7 +280,7 @@ Expected: the script connects to the conversation, identifies the composer and l
 - [ ] **Step 4: Run offline verification after the dry run**
 
 ```powershell
-python -m unittest research-automation.tests.test_sync -v
+python -m unittest discover -s research-automation/tests -p "test_*.py" -v
 git diff --check
 ```
 

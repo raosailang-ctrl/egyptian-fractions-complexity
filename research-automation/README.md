@@ -49,14 +49,14 @@ Omit `-Rounds` and `-Once` for continuous mode. Stop with `Ctrl+C`.
 The assistant should end each response with:
 
 ```text
-<!-- RESEARCH_STATE_BEGIN -->
+RESEARCH_STATE_BEGIN
 Current question:
 Completed:
 Evidence:
 Open problems:
 Next step:
 Artifacts:
-<!-- RESEARCH_STATE_END -->
+RESEARCH_STATE_END
 ```
 
 The helper stores this block only. It does not archive the full transcript.

@@ -182,6 +182,17 @@ def write_dry_run_diagnostic(
         lines.append(f"- Latest assistant locator found: {scan.get('message_found', 'unknown')}")
         lines.append(f"- Scoped candidate count: {scan.get('scoped_candidate_count', 'unknown')}")
         lines.append(f"- Page-wide candidate count: {scan.get('page_candidate_count', 'unknown')}")
+        lines.append(f"- Selected message id: {scan.get('selected_message_id', 'unknown')}")
+        lines.append(f"- Assistant message count: {scan.get('assistant_message_count', 'unknown')}")
+        if scan.get("assistant_message_tail_error"):
+            lines.append(f"- Message-tail scan error: {scan['assistant_message_tail_error']}")
+        lines.append("")
+        lines.append("### Last assistant/message containers in DOM order")
+        for item in scan.get("assistant_message_tail", []):
+            lines.append(f"- DOM index {item['index']}: id={item['id']}; chars={item['text_length']}")
+            lines.append(f"  - Start: {item['text_start']}")
+            lines.append(f"  - End: {item['text_end']}")
+            lines.append(f"  - Buttons: {item['button_labels']}")
         lines.append("")
         lines.append("### Scoped candidate metadata")
         lines.extend(f"- {item}" for item in scan.get("scoped_candidates", []))
@@ -755,6 +766,46 @@ class ChatGPTBrowser:
                 scan["message_html"] = message.evaluate("(el) => el.outerHTML.slice(0, 6000)")
             except Exception:
                 pass
+        try:
+            all_messages = self.page.locator("[data-chatgpt-selection-message-id]")
+            message_count = all_messages.count()
+            scan["assistant_message_count"] = message_count
+            scan["selected_message_id"] = (
+                message.get_attribute("data-chatgpt-selection-message-id")
+                if message is not None else None
+            )
+            tail = []
+            for message_index in range(max(0, message_count - 8), message_count):
+                item = all_messages.nth(message_index)
+                try:
+                    item_id = item.get_attribute("data-chatgpt-selection-message-id") or "(no id)"
+                except Exception:
+                    item_id = "(id unavailable)"
+                try:
+                    item_text = re.sub(r"\s+", " ", item.inner_text().strip())
+                except Exception:
+                    item_text = ""
+                try:
+                    item_buttons = item.locator("button, [role='button']")
+                    button_labels = []
+                    for button_index in range(min(item_buttons.count(), 12)):
+                        button = item_buttons.nth(button_index)
+                        label = button.get_attribute("aria-label") or button.inner_text().strip()
+                        if label:
+                            button_labels.append(label[:100])
+                except Exception:
+                    button_labels = []
+                tail.append({
+                    "index": message_index,
+                    "id": item_id,
+                    "text_length": len(item_text),
+                    "text_start": item_text[:220],
+                    "text_end": item_text[-220:],
+                    "button_labels": button_labels,
+                })
+            scan["assistant_message_tail"] = tail
+        except Exception as exc:
+            scan["assistant_message_tail_error"] = f"{type(exc).__name__}: {exc}"
         self._attachment_scan = scan
         allowed_suffixes = DEFAULT_ALLOWED_SUFFIXES
         filename_pattern = re.compile(

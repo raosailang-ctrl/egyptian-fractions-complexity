@@ -156,6 +156,7 @@ def write_dry_run_diagnostic(
     page = getattr(browser, "page", None)
     page_url = getattr(page, "url", "(page URL unavailable)")
     files = list(downloaded)
+    scan = getattr(browser, "_attachment_scan", None)
     lines = [
         "# ChatGPT research dry-run diagnostic",
         "",
@@ -176,6 +177,21 @@ def write_dry_run_diagnostic(
             lines.append(f"- {path.name} ({size} bytes)")
     else:
         lines.append("- None")
+    lines.extend(["", "## Attachment DOM scan", ""])
+    if scan:
+        lines.append(f"- Latest assistant locator found: {scan.get('message_found', 'unknown')}")
+        lines.append(f"- Scoped candidate count: {scan.get('scoped_candidate_count', 'unknown')}")
+        lines.append(f"- Page-wide candidate count: {scan.get('page_candidate_count', 'unknown')}")
+        lines.append("")
+        lines.append("### Scoped candidate metadata")
+        lines.extend(f"- {item}" for item in scan.get("scoped_candidates", []))
+        lines.append("")
+        lines.append("### Page-wide candidate metadata")
+        lines.extend(f"- {item}" for item in scan.get("page_candidates", []))
+        if scan.get("message_html"):
+            lines.extend(["", "### Latest assistant container HTML (truncated)", "", "```html", scan["message_html"], "```"])
+    else:
+        lines.append("- No DOM scan data available.")
     lines.extend([
         "",
         "## Latest assistant response captured by the synchronizer",
@@ -678,19 +694,56 @@ class ChatGPTBrowser:
         # role=button element, and the visible filename may be the only useful
         # metadata.  Keep the search scoped to the latest assistant message so
         # old rounds are not downloaded again.
-        candidates = (
-            message.locator(
-                "a, button, [role='button'], "
-                "[data-testid*='file'], [data-testid*='attachment'], "
-                "[data-testid*='download']"
-            )
-            if message is not None
-            else self.page.locator(
-                "a, button, [role='button'], "
-                "[data-testid*='file'], [data-testid*='attachment'], "
-                "[data-testid*='download']"
-            )
+        selector = (
+            "a, button, [role='button'], "
+            "[data-testid*='file'], [data-testid*='attachment'], "
+            "[data-testid*='download']"
         )
+        candidates = message.locator(selector) if message is not None else self.page.locator(selector)
+        page_candidates = self.page.locator(selector)
+        scan: dict[str, Any] = {
+            "message_found": message is not None,
+            "scoped_candidate_count": candidates.count(),
+            "page_candidate_count": page_candidates.count(),
+            "scoped_candidates": [],
+            "page_candidates": [],
+            "message_html": "",
+        }
+
+        def candidate_metadata(locator: Any, limit: int = 30) -> list[str]:
+            result: list[str] = []
+            for candidate_index in range(min(locator.count(), limit)):
+                candidate = locator.nth(candidate_index)
+                values: list[str] = []
+                for attribute in ("href", "download", "aria-label", "title", "data-testid", "data-file-name", "data-filename", "data-name"):
+                    try:
+                        value = candidate.get_attribute(attribute) or ""
+                    except Exception:
+                        value = ""
+                    if value:
+                        values.append(f"{attribute}={value}")
+                try:
+                    label = re.sub(r"\\s+", " ", candidate.inner_text().strip())
+                except Exception:
+                    label = ""
+                if label:
+                    values.append(f"text={label[:160]}")
+                try:
+                    tag = candidate.evaluate("(el) => el.tagName.toLowerCase()")
+                    values.insert(0, f"tag={tag}")
+                except Exception:
+                    pass
+                result.append(" | ".join(values)[:500] or "(no readable metadata)")
+            return result
+
+        scan["scoped_candidates"] = candidate_metadata(candidates)
+        scan["page_candidates"] = candidate_metadata(page_candidates)
+        if message is not None:
+            try:
+                scan["message_html"] = message.evaluate("(el) => el.outerHTML.slice(0, 6000)")
+            except Exception:
+                pass
+        self._attachment_scan = scan
         allowed_suffixes = DEFAULT_ALLOWED_SUFFIXES
         filename_pattern = re.compile(
             r"(?:^|[\s/\\])([^\s/\\]+(?:" + "|".join(re.escape(suffix) for suffix in allowed_suffixes) + r"))(?:$|[\s])",

@@ -140,7 +140,7 @@ class SyncTests(unittest.TestCase):
         events = []
 
         class FakeBrowser:
-            def wait_for_response(self):
+            def wait_for_response(self, previous_text=None):
                 return (
                     "artifact result\n"
                     "<!-- RESEARCH_STATE_BEGIN -->\n"
@@ -173,7 +173,7 @@ class SyncTests(unittest.TestCase):
         events = []
 
         class FakeBrowser:
-            def wait_for_response(self):
+            def wait_for_response(self, previous_text=None):
                 return "The conversation is too long to continue."
 
             def collect_downloads(self, destination):
@@ -205,6 +205,78 @@ class SyncTests(unittest.TestCase):
             sync.build_handoff_prompt("state", "abc123", "handoff {commit_sha} {state_text}"),
             "handoff abc123 state",
         )
+
+    def test_wait_for_response_ignores_previous_assistant_message(self):
+        class Page:
+            def wait_for_timeout(self, milliseconds):
+                pass
+
+        browser = sync.ChatGPTBrowser.__new__(sync.ChatGPTBrowser)
+        browser.page = Page()
+        browser.response_timeout_seconds = 1
+        browser.stable_poll_seconds = 0
+        values = iter(["old answer", "old answer", "new answer", "new answer", "new answer"])
+        browser.latest_assistant_text = lambda: next(values)
+        browser._stop_button_visible = lambda: False
+        self.assertEqual(browser.wait_for_response("old answer"), "new answer")
+
+    def test_collect_downloads_reads_links_from_latest_assistant_message(self):
+        class Download:
+            suggested_filename = "result.md"
+
+            def save_as(self, target):
+                Path(target).write_text("result", encoding="utf-8")
+
+        class DownloadContext:
+            def __init__(self):
+                self.value = Download()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                return False
+
+        class Link:
+            def get_attribute(self, name):
+                return "sandbox:/mnt/data/result.md" if name == "href" else None
+
+            def inner_text(self):
+                return "Download result"
+
+            def click(self):
+                pass
+
+        class Links:
+            def count(self):
+                return 1
+
+            def nth(self, index):
+                return Link()
+
+        class Message:
+            def count(self):
+                return 1
+
+            def nth(self, index):
+                return self
+
+            def locator(self, selector):
+                return Links()
+
+        class Page:
+            def locator(self, selector):
+                return Message()
+
+            def expect_download(self, timeout):
+                return DownloadContext()
+
+        browser = sync.ChatGPTBrowser.__new__(sync.ChatGPTBrowser)
+        browser.page = Page()
+        destination = self.root / "downloads"
+        files = browser.collect_downloads(destination)
+        self.assertEqual([path.name for path in files], ["result.md"])
+        self.assertEqual(files[0].read_text(encoding="utf-8"), "result")
 
 
 if __name__ == "__main__":

@@ -6,11 +6,15 @@ import shutil
 import subprocess
 import tarfile
 import time
-import tomllib
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 compatibility.
+    import tomli as tomllib
 
 
 class SyncError(RuntimeError):
@@ -40,6 +44,7 @@ class RoundResult:
     commit_sha: str | None = None
     context_handoff: bool = False
     state_updated: bool = False
+    response_text: str = ""
 
 
 STATE_BEGIN = "<!-- RESEARCH_STATE_BEGIN -->"
@@ -461,19 +466,24 @@ class ChatGPTBrowser:
                 continue
         return False
 
-    def wait_for_response(self) -> str:
+    def wait_for_response(self, previous_text: str | None = None) -> str:
         deadline = time.monotonic() + self.response_timeout_seconds
-        previous = None
+        previous = previous_text
+        saw_new_text = previous_text is None
         stable = 0
         while time.monotonic() < deadline:
             current = self.latest_assistant_text()
             if self._stop_button_visible():
                 stable = 0
+            elif previous_text is not None and not saw_new_text and current == previous_text:
+                stable = 0
             elif current and current == previous:
+                saw_new_text = True
                 stable += 1
                 if stable >= 2:
                     return current
             else:
+                saw_new_text = saw_new_text or bool(current)
                 stable = 0
             previous = current
             self.page.wait_for_timeout(int(self.stable_poll_seconds * 1000))
@@ -483,7 +493,10 @@ class ChatGPTBrowser:
         if self.page is None:
             raise BrowserError("Browser is not connected.")
         destination.mkdir(parents=True, exist_ok=True)
-        links = self.page.locator("a")
+        message = self._last_locator(
+            ("[data-message-author-role='assistant']", "main article")
+        )
+        links = message.locator("a") if message is not None else self.page.locator("a")
         downloaded: list[Path] = []
         for index in range(links.count()):
             link = links.nth(index)
@@ -572,13 +585,14 @@ def run_round(
     config: Config,
     dry_run: bool = False,
     events: list[Any] | None = None,
+    previous_response_text: str | None = None,
 ) -> RoundResult:
     """Process one completed response and send exactly one follow-up prompt."""
     def mark(event: Any) -> None:
         if events is not None:
             events.append(event)
 
-    response = browser.wait_for_response()
+    response = browser.wait_for_response(previous_response_text)
     mark("response")
     if context_limit_detected(response):
         state_path = config.repo_path / "research_state.md"
@@ -591,7 +605,11 @@ def run_round(
             prompt = build_handoff_prompt(state_text, _head_sha(config.repo_path), config.handoff_prompt)
             browser.send_prompt(prompt)
             mark(("handoff", prompt))
-        return RoundResult(commit_sha=_head_sha(config.repo_path), context_handoff=True)
+        return RoundResult(
+            commit_sha=_head_sha(config.repo_path),
+            context_handoff=True,
+            response_text=response,
+        )
 
     staging_root = config.staging_dir
     if not staging_root.is_absolute():
@@ -634,6 +652,7 @@ def run_round(
         verifier_results=tuple(verifier_results),
         commit_sha=commit_sha,
         state_updated=state_updated,
+        response_text=response,
     )
 
 
@@ -660,13 +679,20 @@ def run_loop(config_path: Path, once: bool = False, rounds: int = 0, dry_run: bo
         if browser.page is not None and config.chat_url.rstrip("/") not in browser.page.url:
             browser.page.goto(config.chat_url, wait_until="domcontentloaded")
         completed = 0
+        previous_response_text = None
         while True:
             if once and completed >= 1:
                 break
             if not once and rounds > 0 and completed >= rounds:
                 break
-            result = run_round(browser, config, dry_run=dry_run)
+            result = run_round(
+                browser,
+                config,
+                dry_run=dry_run,
+                previous_response_text=previous_response_text,
+            )
             completed += 1
+            previous_response_text = result.response_text
             _json_log(
                 log_path,
                 "round_complete",

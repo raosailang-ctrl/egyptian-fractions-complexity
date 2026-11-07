@@ -313,6 +313,65 @@ class SyncTests(unittest.TestCase):
         self.assertEqual([path.name for path in files], ["result.md"])
         self.assertEqual(files[0].read_text(encoding="utf-8"), "result")
 
+    def test_collect_downloads_reads_filename_from_attachment_button(self):
+        class Download:
+            suggested_filename = "verify_explicit_modular_sieve.py"
+
+            def save_as(self, target):
+                Path(target).write_text("result", encoding="utf-8")
+
+        class DownloadContext:
+            def __init__(self):
+                self.value = Download()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                return False
+
+        class AttachmentButton:
+            def get_attribute(self, name):
+                return None
+
+            def inner_text(self):
+                return "verify_explicit_modular_sieve.py\n代码"
+
+            def click(self):
+                pass
+
+        class Candidates:
+            def count(self):
+                return 1
+
+            def nth(self, index):
+                return AttachmentButton()
+
+        class Message:
+            def count(self):
+                return 1
+
+            def nth(self, index):
+                return self
+
+            def locator(self, selector):
+                self.selector = selector
+                return Candidates()
+
+        class Page:
+            def locator(self, selector):
+                return Message()
+
+            def expect_download(self, timeout):
+                return DownloadContext()
+
+        browser = sync.ChatGPTBrowser.__new__(sync.ChatGPTBrowser)
+        browser.page = Page()
+        destination = self.root / "downloads"
+        files = browser.collect_downloads(destination)
+        self.assertEqual([path.name for path in files], ["verify_explicit_modular_sieve.py"])
+        self.assertEqual(files[0].read_text(encoding="utf-8"), "result")
+
 
 if __name__ == "__main__":
     unittest.main()

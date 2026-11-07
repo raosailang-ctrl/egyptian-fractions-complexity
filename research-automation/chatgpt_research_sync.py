@@ -407,11 +407,12 @@ class ChatGPTBrowser:
             self.page.wait_for_timeout(1000)
         raise BrowserError("ChatGPT login is still required in the dedicated Chrome window.")
 
-    def _last_locator(self, selectors: tuple[str, ...]):
-        if self.page is None:
+    def _last_locator(self, selectors: tuple[str, ...], page=None):
+        page = page or getattr(self, "page", None)
+        if page is None:
             raise BrowserError("Browser is not connected.")
         for selector in selectors:
-            locator = self.page.locator(selector)
+            locator = page.locator(selector)
             try:
                 count = locator.count()
             except Exception:
@@ -420,23 +421,28 @@ class ChatGPTBrowser:
                 return locator.nth(count - 1)
         return None
 
+    def _latest_assistant_locator(self, page=None):
+        page = page or self.page
+        if page is None:
+            raise BrowserError("Browser is not connected.")
+        # ChatGPT's current DOM uses data-chatgpt-selection-message-id for
+        # rendered assistant messages.  Keep the older selectors as fallbacks
+        # for accounts that still receive the previous message markup.
+        return self._last_locator(
+            (
+                "[data-chatgpt-selection-message-id]",
+                "[data-message-author-role='assistant']",
+                "main article",
+                "[data-turn-key]",
+            ),
+            page=page,
+        )
+
     def latest_assistant_text(self, page=None) -> str:
         page = page or self.page
         if page is None:
             raise BrowserError("Browser is not connected.")
-        locator = None
-        for selector in (
-            "[data-message-author-role='assistant']",
-            "main article",
-        ):
-            candidate = page.locator(selector)
-            try:
-                count = candidate.count()
-            except Exception:
-                count = 0
-            if count:
-                locator = candidate.nth(count - 1)
-                break
+        locator = self._latest_assistant_locator(page)
         if locator is None:
             locator = page.locator("main")
         return locator.inner_text().strip()
@@ -493,23 +499,93 @@ class ChatGPTBrowser:
         if self.page is None:
             raise BrowserError("Browser is not connected.")
         destination.mkdir(parents=True, exist_ok=True)
-        message = self._last_locator(
-            ("[data-message-author-role='assistant']", "main article")
+        message = self._latest_assistant_locator()
+        # Generated files are currently rendered as file cards.  Depending on
+        # the ChatGPT build, the card itself may be an anchor, a button, or a
+        # role=button element, and the visible filename may be the only useful
+        # metadata.  Keep the search scoped to the latest assistant message so
+        # old rounds are not downloaded again.
+        candidates = (
+            message.locator(
+                "a, button, [role='button'], "
+                "[data-testid*='file'], [data-testid*='attachment'], "
+                "[data-testid*='download']"
+            )
+            if message is not None
+            else self.page.locator(
+                "a, button, [role='button'], "
+                "[data-testid*='file'], [data-testid*='attachment'], "
+                "[data-testid*='download']"
+            )
         )
-        links = message.locator("a") if message is not None else self.page.locator("a")
+        allowed_suffixes = DEFAULT_ALLOWED_SUFFIXES
+        filename_pattern = re.compile(
+            r"(?:^|[\s/\\])([^\s/\\]+(?:" + "|".join(re.escape(suffix) for suffix in allowed_suffixes) + r"))(?:$|[\s])",
+            flags=re.IGNORECASE,
+        )
         downloaded: list[Path] = []
-        for index in range(links.count()):
-            link = links.nth(index)
-            href = link.get_attribute("href") or ""
+        seen_candidates: set[tuple[str, str]] = set()
+        direct: list[tuple[Any, str, str, str]] = []
+        deferred: list[tuple[Any, str, str, str]] = []
+        for index in range(candidates.count()):
+            candidate = candidates.nth(index)
+            attributes: list[str] = []
+            for name in (
+                "href",
+                "download",
+                "aria-label",
+                "title",
+                "data-testid",
+                "data-file-name",
+                "data-filename",
+                "data-name",
+            ):
+                try:
+                    value = candidate.get_attribute(name) or ""
+                except Exception:
+                    value = ""
+                if value:
+                    attributes.append(value)
             try:
-                label = link.inner_text().lower()
+                label = candidate.inner_text().strip()
             except Exception:
                 label = ""
-            if not href.startswith("sandbox:") and "download" not in label:
+            metadata = " ".join(attributes + [label])
+            href = next((value for value in attributes if value.startswith("sandbox:")), "")
+            normalized = metadata.lower()
+            if not href and "download" not in normalized and "下载" not in normalized:
+                if not filename_pattern.search(metadata):
+                    continue
+            # A download control has no filename in its own DOM node and is
+            # paired with a separate preview button.  Try these controls first;
+            # file-name-only cards are a fallback for older ChatGPT layouts.
+            is_preview = any(token in normalized for token in ("preview", "预览"))
+            is_direct = bool(href) or "download" in normalized or "下载" in normalized
+            record = (candidate, href, label, metadata)
+            (deferred if is_preview and not href else direct if is_direct else deferred).append(record)
+
+        # Modern cards expose a dedicated download button.  If those controls
+        # exist, do not also click the full-card preview buttons: a preview can
+        # open a viewer instead of producing a download and would make a round
+        # unnecessarily slow.  Older layouts without download controls use the
+        # deferred filename cards as their fallback.
+        records = direct or deferred
+        for candidate, href, label, metadata in records:
+            # Do not click a filename card after its dedicated download control
+            # has already succeeded.  Generic controls such as "下载文件" have
+            # no stable filename, so they are intentionally not deduplicated.
+            filename_match = filename_pattern.search(metadata)
+            identity = (
+                href.lower(),
+                filename_match.group(1).lower() if filename_match else re.sub(r"\s+", " ", label.lower()),
+            )
+            if (href or filename_match) and identity in seen_candidates:
                 continue
+            if href or filename_match:
+                seen_candidates.add(identity)
             try:
-                with self.page.expect_download(timeout=10000) as download_info:
-                    link.click()
+                with self.page.expect_download(timeout=5000) as download_info:
+                    candidate.click()
                 download = download_info.value
                 target = destination / download.suggested_filename
                 counter = 2

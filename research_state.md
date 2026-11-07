@@ -1,33 +1,35 @@
 Current question:
-Verify actual attachment-card detection and download in the dedicated Chrome synchronizer after the visible research-state marker fix passed.
+Inspect the latest attachment smoke-test diagnostic and determine why the run captured zero attachments and no state marker.
 
 Completed:
-- User successfully pulled origin/main over HTTP/1.1 from 1cc9657 to b7ec246.
-- User reran the dedicated Chrome launcher with -Once -DryRun.
-- Live output confirms ChatGPT connected, diagnostic saved, and state_block=yes.
-- This verifies that visible RESEARCH_STATE_BEGIN/END markers are now extracted correctly from browser inner_text().
-- Attachment count was zero, which is expected for the captured text-only assistant response; attachment detection remains untested.
-- Created a harmless Markdown attachment smoke-test artifact for the next dry-run.
-- Recorded the successful live state-marker test in the repository.
+- User ran the updated launcher with -Once -DryRun.
+- The run connected to ChatGPT and generated a new diagnostic without throwing.
+- The console reported attachments=0 and state_block=no.
+- Recorded the result and the required diagnostic review steps in the repository.
+- No attachment selector changes were made because the captured assistant response has not yet been inspected.
 
 Evidence:
-- User console: diagnostic path C:\egypt fractions\chatgpt-automation-staging\20261107-210954\dry-run-diagnostic.md.
-- User console: state_block=yes, attachments=0.
-- User console: round completed with unchanged HEAD b7ec24607e50e4de0a7047138a297f33f3eeff25.
-- Live result note: research-automation/VISIBLE_STATE_MARKER_DRY_RUN_PASSED_2026-11-07.md.
-- No real synchronization or synchronizer-driven commit/push occurred.
+- User console diagnostic path: C:\egypt fractions\chatgpt-automation-staging\20261107-211358\dry-run-diagnostic.md.
+- Console summary: state_block=no, attachments=0.
+- Unchanged HEAD: b7ec24607e50e4de0a7047138a297f33f3eeff25.
+- Note: research-automation/ATTACHMENT_SMOKE_TEST_INCONCLUSIVE_2026-11-07.md.
+- Note commit: a4beb6932ee39299369e8e40862c3bbd7634a864.
+- Previous run successfully verified state_block=yes, so this regression needs diagnosis rather than assumption.
 
 Open problems:
-- Attachment-card detection/download has not yet been tested with a real attachment.
-- The actual downloaded attachment name and size are not yet known.
-- Real sync remains disabled.
+- The actual captured response in the new diagnostic has not been reviewed.
+- It is unknown whether the wrong assistant message was selected or whether the attachment card/link was not detected.
+- Attachment download remains unverified.
+- Do not run without -DryRun.
 
 Next step:
-Run the launcher again with -Once -DryRun while this assistant response containing attachment-smoke-test-2026-11-07.md is the latest response. Confirm the diagnostic says state_block=yes and attachments=1, and verify the staged file has non-zero size. Keep -DryRun enabled.
+Run:
+$diag = "C:\egypt fractions\chatgpt-automation-staging\20261107-211358\dry-run-diagnostic.md"
+Get-Content -Encoding UTF8 -LiteralPath $diag -Raw
+Send the output for review, especially Page URL and the full captured assistant response. Only then adjust selectors or conversation targeting.
 
 Artifacts:
-- research-automation/VISIBLE_STATE_MARKER_DRY_RUN_PASSED_2026-11-07.md
+- research-automation/ATTACHMENT_SMOKE_TEST_INCONCLUSIVE_2026-11-07.md
 - research-automation/chatgpt_research_sync.py
 - research-automation/tests/test_sync.py
 - research_state.md
-- attachment-smoke-test-2026-11-07.md

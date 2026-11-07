@@ -392,11 +392,33 @@ def run_verifiers(
 
 
 def _git(repo_root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", "-C", str(repo_root), *args],
-        check=check,
-        capture_output=True,
-        text=True,
+    command = ["git", "-C", str(repo_root), *args]
+    retryable = args and args[0] in {"pull", "push"}
+    retry_fragments = (
+        "could not connect",
+        "failed to connect",
+        "unable to access",
+        "connection",
+        "timed out",
+        "proxy",
+        "tls",
+        "network",
+    )
+    attempts = 3 if retryable else 1
+    result: subprocess.CompletedProcess[str] | None = None
+    for attempt in range(attempts):
+        result = subprocess.run(command, check=False, capture_output=True, text=True)
+        if result.returncode == 0 or not check:
+            return result
+        details = f"{result.stdout}\n{result.stderr}".lower()
+        if attempt + 1 >= attempts or not any(fragment in details for fragment in retry_fragments):
+            break
+        time.sleep(2 ** attempt)
+    assert result is not None
+    details = (result.stderr or result.stdout).strip()
+    raise SyncError(
+        f"Git command failed ({result.returncode}): {' '.join(command)}"
+        + (f"\n{details}" if details else "")
     )
 
 
@@ -456,6 +478,7 @@ class ChatGPTBrowser:
         self._browser = None
         self._context = None
         self.page = None
+        self._prompt_page = None
 
     def connect(self) -> None:
         try:
@@ -481,11 +504,33 @@ class ChatGPTBrowser:
         self._context = contexts[0]
         pages = self._context.pages
         chat_pages = [page for page in pages if (page.url or "").startswith("https://chatgpt.com")]
-        self.page = (chat_pages[-1] if chat_pages else pages[0]) if pages else self._context.new_page()
-        # A ChatGPT profile can contain both the normal conversation tab and a
-        # floating-chat tab.  The floating tab has a tall narrow composer and
-        # can block fill/Enter operations, so prefer a normal wide composer.
-        for page in pages:
+        self.page = (chat_pages[0] if chat_pages else pages[0]) if pages else self._context.new_page()
+        # A profile can contain duplicate conversation tabs and a floating-chat
+        # tab.  Select the page whose latest rendered assistant message is
+        # usable and/or carries the newest attachment card.  The composer is
+        # selected independently below because it may live on another tab.
+        best_score = -1
+        for page in chat_pages or pages:
+            score = 0
+            try:
+                messages = page.locator("[data-chatgpt-selection-message-id]")
+                count = messages.count()
+                score += min(count, 20)
+                if count:
+                    latest = messages.nth(count - 1)
+                    latest_text = latest.inner_text(timeout=3000).strip()
+                    if "无法加载此回复" not in latest_text and "could not load" not in latest_text.lower():
+                        score += 20
+                    if self._message_has_attachment_control(latest):
+                        score += 100
+                    if extract_state_block(latest_text) is not None:
+                        score += 50
+            except Exception:
+                pass
+            if score > best_score:
+                self.page = page
+                best_score = score
+        for page in chat_pages or pages:
             try:
                 composer = page.locator(
                     ("textarea, [contenteditable='true'], div[role='textbox']")
@@ -494,7 +539,7 @@ class ChatGPTBrowser:
             except Exception:
                 box = None
             if box and box["width"] >= 300 and box["height"] <= 120:
-                self.page = page
+                self._prompt_page = page
                 break
         try:
             self.page.bring_to_front()
@@ -590,6 +635,39 @@ class ChatGPTBrowser:
         return locator.inner_text().strip()
 
     def _composer(self):
+        pages = []
+        if self._context is not None:
+            pages.extend(
+                page for page in self._context.pages
+                if (page.url or "").startswith("https://chatgpt.com")
+            )
+        if self.page is not None and self.page not in pages:
+            pages.insert(0, self.page)
+        best = None
+        best_score = -1
+        for page in pages:
+            try:
+                locator = page.locator(
+                    "textarea, [contenteditable='true'], div[role='textbox']"
+                ).last
+                if not locator.count() or not locator.is_visible() or not locator.is_enabled():
+                    continue
+                box = locator.bounding_box()
+                score = 10
+                if box and box["width"] >= 300 and box["height"] <= 120:
+                    score += 100
+                if score > best_score:
+                    best = (page, locator)
+                    best_score = score
+            except Exception:
+                continue
+        if best is not None:
+            self._prompt_page, composer = best
+            try:
+                self._prompt_page.bring_to_front()
+            except Exception:
+                pass
+            return composer
         return self._last_locator(("textarea", "[contenteditable='true']", "div[role='textbox']"))
 
     def send_prompt(self, prompt: str) -> None:
@@ -605,6 +683,8 @@ class ChatGPTBrowser:
             except Exception as exc:
                 raise BrowserError("Cannot edit the ChatGPT message composer.") from exc
         composer.press("Enter")
+        if self._prompt_page is not None:
+            self.page = self._prompt_page
 
     def _stop_button_visible(self) -> bool:
         if self.page is None:
@@ -760,10 +840,17 @@ class ChatGPTBrowser:
         )
         candidates = message.locator(selector) if message is not None else self.page.locator(selector)
         page_candidates = self.page.locator(selector)
+
+        def safe_attribute(locator: Any, name: str) -> str | None:
+            try:
+                return locator.get_attribute(name)
+            except Exception:
+                return None
+
         scan: dict[str, Any] = {
             "message_found": message is not None,
             "latest_message_id": (
-                latest_message.get_attribute("data-chatgpt-selection-message-id")
+                safe_attribute(latest_message, "data-chatgpt-selection-message-id")
                 if latest_message is not None else None
             ),
             "attachment_message_index": attachment_message_index,
@@ -813,11 +900,11 @@ class ChatGPTBrowser:
             message_count = all_messages.count()
             scan["assistant_message_count"] = message_count
             scan["selected_message_id"] = (
-                message.get_attribute("data-chatgpt-selection-message-id")
+                safe_attribute(message, "data-chatgpt-selection-message-id")
                 if message is not None else None
             )
             scan["latest_message_id"] = (
-                latest_message.get_attribute("data-chatgpt-selection-message-id")
+                safe_attribute(latest_message, "data-chatgpt-selection-message-id")
                 if latest_message is not None else None
             )
             scan["attachment_message_index"] = attachment_message_index
@@ -1046,6 +1133,7 @@ class ChatGPTBrowser:
         self._playwright = None
         self._context = None
         self.page = None
+        self._prompt_page = None
 
 
 def _json_log(path: Path, event: str, **fields: Any) -> None:

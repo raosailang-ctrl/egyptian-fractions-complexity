@@ -134,10 +134,15 @@ def load_config(path: Path) -> Config:
 
 
 def extract_state_block(text: str) -> str | None:
-    """Return the marked state payload, or None when the response omitted it."""
-    pattern = re.escape(STATE_BEGIN) + r"\s*(.*?)\s*" + re.escape(STATE_END)
-    match = re.search(pattern, text, flags=re.DOTALL)
+    """Extract visible text markers or legacy HTML-comment markers.
+
+    Browser inner_text() omits HTML comments, so new prompts use visible lines.
+    """
+    begin = r"(?:<!--\s*RESEARCH_STATE_BEGIN\s*-->|(?m:^\s*RESEARCH_STATE_BEGIN\s*$))"
+    end = r"(?:<!--\s*RESEARCH_STATE_END\s*-->|(?m:^\s*RESEARCH_STATE_END\s*$))"
+    match = re.search(begin + r"\s*(.*?)\s*" + end, text, flags=re.DOTALL)
     return match.group(1).strip() if match else None
+
 
 def write_dry_run_diagnostic(
     round_dir: Path,
@@ -815,6 +820,7 @@ def build_continue_prompt(
         "继续研究。先读取仓库中的 research_state.md 和最近一次提交，"
         "结合现有文件推进 Next step。完成后输出新的成果文件，并在回答末尾包含状态标记。"
     )
+    base = base.replace(STATE_BEGIN, "RESEARCH_STATE_BEGIN").replace(STATE_END, "RESEARCH_STATE_END")
     return base.replace("{commit_sha}", commit_sha or "unknown").replace("{state_text}", state_text)
 
 
@@ -827,6 +833,7 @@ def build_handoff_prompt(
         "上下文已接近上限。请从仓库中的 research_state.md 继续研究，"
         "不要重复已经完成的内容。最近提交：{commit_sha}\n\n当前状态：\n{state_text}"
     )
+    base = base.replace(STATE_BEGIN, "RESEARCH_STATE_BEGIN").replace(STATE_END, "RESEARCH_STATE_END")
     return base.replace("{commit_sha}", commit_sha or "unknown").replace("{state_text}", state_text)
 
 

@@ -17,7 +17,7 @@ Completed:
 - Created reports, verifiers, handoff, and a ZIP archive; integrity test passed.
 
 Evidence:
-- Main qrs report: research-outputs/K3_QRS_GCD_PARAMETERIZATION_2026-11-08.md, commit 6395767b505bb336abcf738a61c030fbea6af69a.
+- Main qrs report: research-outputs/K3_QRS_GCD_PARAMETERIZATION_2026-11-08.md, commit b0bab6564c73daa1b8eeda8d7c5c185e1cd34356.
 - qrs verifier: research-outputs/verify_qrs_parametrization.py, commit e755c811816231d56d3144e3e638e8b941fc72f9.
 - qrs handoff: research-outputs/QRS_RESEARCH_HANDOFF_2026-11-08.md, commit e7dff11f42e03258be3847c2301732f2816c6412.
 - Local Jacobi note: research-outputs/LOCAL_JACOBI_SIEVE_2026-11-08.md, commit df659af1b005ea5b273cf9ba28b3dae65df6ff1b.

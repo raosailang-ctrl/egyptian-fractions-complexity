@@ -10,6 +10,7 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
+from urllib.parse import urljoin
 
 try:
     import tomllib
@@ -804,7 +805,26 @@ class ChatGPTBrowser:
     def _click_candidate(self, candidate) -> None:
         """Click a file control after activating its hover-only toolbar."""
         try:
+            row = candidate.locator(
+                "xpath=ancestor::*[contains(@class,'group/resource-row')][1]"
+            )
+            if row.count():
+                row.hover(timeout=3000)
+        except Exception:
+            pass
+        try:
             candidate.hover(timeout=3000)
+        except Exception:
+            pass
+        # ChatGPT renders the per-file download button inside a toolbar whose
+        # parent is transparent until the resource row is hovered.  A normal
+        # actionability click can therefore be intercepted by that transparent
+        # layer even though the button is present and enabled.  Dispatch the
+        # click to the actual button first; keep the coordinate path as a
+        # fallback for browser builds that only respond to native mouse input.
+        try:
+            candidate.click(force=True, timeout=3000)
+            return
         except Exception:
             pass
         mouse = getattr(self.page, "mouse", None)
@@ -819,7 +839,78 @@ class ChatGPTBrowser:
                     return
             except Exception:
                 pass
-        candidate.click()
+        try:
+            candidate.click(timeout=3000)
+        except Exception:
+            candidate.click()
+
+    def _download_via_chatgpt_response(
+        self,
+        candidate,
+        destination: Path,
+        filename: str,
+    ) -> Path:
+        """Download modern ChatGPT file cards through their authenticated URL."""
+        if self.page is None or self._context is None:
+            raise BrowserError("Browser context is not available for file download.")
+        expect_response = getattr(self.page, "expect_response", None)
+        request_context = getattr(self._context, "request", None)
+        if expect_response is None or request_context is None:
+            raise BrowserError("The connected browser cannot capture ChatGPT download responses.")
+
+        predicate = lambda response: "download_intent=true" in response.url
+        with expect_response(predicate, timeout=12000) as response_info:
+            self._click_candidate(candidate)
+        response = response_info.value
+        payload = response.body()
+        try:
+            envelope = json.loads(payload.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise BrowserError("ChatGPT returned a non-JSON download response.") from exc
+        download_url = envelope.get("download_url")
+        if not isinstance(download_url, str) or not download_url:
+            raise BrowserError("ChatGPT download response did not contain download_url.")
+        download_url = urljoin(self.page.url, download_url)
+        file_response = request_context.get(download_url, timeout=12000)
+        if not file_response.ok:
+            raise BrowserError(
+                f"Authenticated file download returned HTTP {file_response.status}."
+            )
+        target = self._unique_target(destination, Path(filename).name)
+        target.write_bytes(file_response.body())
+        return target
+
+    def _expand_attachment_group(self, message) -> None:
+        """Expand collapsed file rows such as "另有 2 个" before scanning."""
+        try:
+            controls = message.locator("button, [role='button']")
+            count = controls.count()
+        except Exception:
+            return
+        for index in range(count - 1, -1, -1):
+            control = controls.nth(index)
+            try:
+                label = re.sub(
+                    r"\s+", " ",
+                    (control.get_attribute("aria-label") or control.inner_text()).strip(),
+                ).lower()
+            except Exception:
+                continue
+            if not (
+                re.search(r"(?:另有|还有|more|other)\s*\d+", label)
+                or "show more" in label
+                or "展开" in label
+            ):
+                continue
+            try:
+                control.evaluate("(el) => el.click()")
+                self.page.wait_for_timeout(500)
+            except Exception:
+                try:
+                    self._click_candidate(control)
+                except Exception:
+                    pass
+            return
 
     def collect_downloads(self, destination: Path) -> list[Path]:
         if self.page is None:
@@ -829,6 +920,8 @@ class ChatGPTBrowser:
         message, attachment_message_index = self._latest_attachment_locator()
         if message is None:
             message = latest_message
+        if message is not None:
+            self._expand_attachment_group(message)
         # The latest assistant response may be text-only even when the
         # immediately preceding assistant response carries a file.  Search
         # backward for the newest attachment-bearing message, then keep all
@@ -985,6 +1078,33 @@ class ChatGPTBrowser:
             # file-name-only cards are a fallback for older ChatGPT layouts.
             is_preview = any(token in normalized for token in ("preview", "预览"))
             is_direct = bool(href) or "download" in normalized or "下载" in normalized
+            # A successful ChatGPT download removes that row's download
+            # button from the live DOM.  Keep a stable locator based on the
+            # filename and resource-row text instead of the original global
+            # button index, which would shift after the first download.
+            if is_direct and not href and message is not None:
+                try:
+                    row = candidate.locator(
+                        "xpath=ancestor::*[contains(@class,'group/resource-row')][1]"
+                    )
+                    row_text = re.sub(r"\s+", " ", row.inner_text().strip())
+                    row_match = filename_pattern.search(row_text)
+                    if row_match:
+                        filename = row_match.group(1)
+                        stable_row = message.locator(
+                            "[class*='group/resource-row']"
+                        ).filter(has_text=filename).first
+                        stable_download = stable_row.locator(
+                            "button[aria-label*='下载文件'], "
+                            "button[aria-label*='Download' i], "
+                            "[role='button'][aria-label*='下载文件'], "
+                            "[data-testid*='download']"
+                        ).first
+                        if stable_download.count():
+                            candidate = stable_download
+                            metadata = f"{metadata} {filename}"
+                except Exception:
+                    pass
             record = (candidate, href, label, metadata)
             (deferred if is_preview and not href else direct if is_direct else deferred).append(record)
 
@@ -1078,6 +1198,32 @@ class ChatGPTBrowser:
                 )
             except Exception as exc:
                 attempt["control_html"] = f"unavailable: {type(exc).__name__}: {exc}"
+            # Modern ChatGPT file cards first return an authenticated JSON
+            # envelope containing a short-lived download URL.  Capturing that
+            # response avoids Chrome's one-download-per-click UI behavior and
+            # remains stable even when the clicked row disappears from the DOM.
+            modern_filename = filename_match.group(1) if filename_match else ""
+            if (
+                modern_filename
+                and not href
+                and ("下载" in normalized or "download" in normalized)
+                and getattr(self.page, "expect_response", None) is not None
+            ):
+                try:
+                    target = self._download_via_chatgpt_response(
+                        action_candidate,
+                        destination,
+                        modern_filename,
+                    )
+                    downloaded.append(target)
+                    attempt["method"] = "chatgpt-response"
+                    attempt["fallback_file"] = str(target)
+                    scan["download_attempts"].append(attempt)
+                    continue
+                except Exception as response_exc:
+                    attempt["error"] = (
+                        attempt["error"] + "; " if attempt["error"] else ""
+                    ) + f"response download: {type(response_exc).__name__}: {response_exc}"
             before = self._file_snapshot(download_directories)
             try:
                 with self.page.expect_download(timeout=7000) as download_info:

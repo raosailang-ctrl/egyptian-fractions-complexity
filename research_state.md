@@ -76,3 +76,28 @@ Latest Gray-code kernel root-transport result (2026-11-09):
 - New verifier: research-outputs/gray_kernel_root_transport_sieve.py
 - Latest commits: verifier 03d922ed487460271f309b9fda9da0edf1d391be; report 02ec05fc49a41f8a1811964baa05cd44a03b65db.
 - This reduces root-extraction/CRT setup from per-q to per-kernel-basis-vector, but no wall-clock speedup is claimed. The Gray class enumeration remains exponential in nullity d, and per-q split search remains exponential.
+
+
+Latest weighted Jacobi code-enumerator result (2026-11-09):
+- Let D=product_i ell_i^{a_i}, with distinct prime factors ell_i, and let A_{ji}=1 iff (ell_i/p_j)=-1 for distinct p_j|h. A divisor q=product ell_i^{e_i} passes every local Jacobi condition iff v_i=e_i mod 2 lies in ker_F2(A).
+- Define alpha_i=floor(a_i/2)+1 and beta_i=ceil(a_i/2). Exact survivor count:
+  Q_pass = sum_{v in ker A} product_{v_i=0} alpha_i product_{v_i=1} beta_i.
+- Weighted MacWilliams identity:
+  Q_pass = 2^{-r} sum_{y in Row(A)} product_i (alpha_i + (-1)^{y_i} beta_i), r=rank(A).
+- Let O={i:a_i odd}, E={i:a_i even}. Since alpha_i=beta_i for i in O, only rowspace vectors supported entirely on E contribute. Hence:
+  Q_pass = (product_{i in O}(a_i+1))/2^r * sum_{y in Row(A), supp(y) subset E} product_{i in E,y_i=0}(a_i+1).
+  The contributing subspace has dimension r-rank(A_O), where A_O is the submatrix of odd-exponent columns. Thus the exact sum has at most 2^(r-rank(A_O)) terms.
+- Independently verified both the weighted rowspace formula and simplified formula against direct enumeration of all divisors q on 13 selected t values. All checks pass.
+- Exact counts: t=3 216; 7 576; 17 352; 69 21504; 137 768; 185 768; 609 1792; 1105 1920; 1285 1536; 1457 256; 5957 256; 6215 288; 6657 1056.
+- Full A ranks / W sizes for these 13 values: (t=3:2/1), (7:3/1), (17:2/1), (69:3/1), (137:3/1), (185:2/1), (609:3/1), (1105:5/4), (1285:4/4), (1457:3/1), (5957:5/2), (6215:3/1), (6657:6/4). For t=1105,1285,5957,6657, nonzero contributing rowspace vectors add weighted terms.
+- Important distinction: the earlier rank survey's rank is based on exponent-one prime columns, which gives a valid simple upper bound tau(D)/2^r1. The new full matrix A includes all distinct prime columns; because divisor choices are weighted by exponent parity, tau(D)/2^rank(A) is not generally a valid bound. The weighted MacWilliams formula resolves this distinction.
+- New report: research-outputs/WEIGHTED_JACOBI_CODE_ENUMERATOR_2026-11-09.md
+- New verifier: research-outputs/weighted_jacobi_code_count.py
+- Verification run: WEIGHTED_CODE_ENUMERATOR_CHECKS: PASS.
+
+Next step:
+Use the weighted rowspace formula to characterize exactly when Q_pass=tau(D)/2^r and when nonzero even-exponent coordinates create extra terms. Then combine the small contributing subspace W=Row(A) intersect F_2^E with Gray-code root transport: organize q by parity codeword v, weighted exponent lifts, and the global unitary-split condition. Seek a theorem bounding the number of W-classes that can contain actual global representations; preserve t=7 and t=69 as nonuniqueness counterexamples. Do not infer uniqueness from the 13 samples.
+
+Artifacts:
+- research-outputs/weighted_jacobi_code_count.py
+- research-outputs/WEIGHTED_JACOBI_CODE_ENUMERATOR_2026-11-09.md

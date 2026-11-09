@@ -61,3 +61,18 @@ Latest root-transport result:
 
 New open problem:
 - The root multiplier w_q is still recomputed separately for each q. The passing exponent vectors solve an affine F_2 system; investigate Gray-code traversal of its kernel and precomputed square roots of kernel-supported prime products to update w_q by multiplication rather than repeated local square-root extraction.
+
+
+Latest Gray-code kernel root-transport result (2026-11-09):
+- Full Jacobi parity matrix A has one column for every distinct prime ell|D and one row for every distinct p|h; A_{p,ell}=1 iff (ell/p)=-1. A divisor q passes all local Jacobi rows iff its exponent parity vector v lies in ker_F2(A).
+- Let b_1,...,b_d be a kernel basis, B_j=product_{i:b_ji=1} ell_i, and choose u_j^2=B_j^(-1) mod M. For a coefficient vector c, put n_i=sum_j c_j b_ji and v_i=n_i mod 2. The overlap correction C(v)=product_i ell_i^{floor(n_i/2)} gives w_v=C(v)*product_{j:c_j=1}u_j, with w_v^2=q_v^(-1) mod M for q_v=product_i ell_i^{v_i}. This correction is essential because basis supports overlap.
+- For an actual q with exponents e_i=2f_i+v_i, let S_q=product_i ell_i^{f_i}; then w_q=S_q^(-1)w_v and roots(-D/q)=w_q*roots(-D). Thus root square-root extraction is needed only for the d kernel basis vectors plus the one base root set, not separately for every passing q.
+- Gray code traverses all 2^d kernel coefficient vectors, toggling one basis vector at a time; the implementation updates the basis-root product and overlap counts, then applies C(v).
+- Exact tests on all 13 selected parameters reproduce all previous representation counts. For t=7 and t=69, all passing q have transported root sets compared against direct local-root+CRT construction; all equal. All MITM-selected q are compared against direct unitary-split enumeration in audit mode; all pass.
+- t=7: n=9, rank=3, nullity=6, 64 parity classes, 576 passing q, 2 representations.
+- t=69: n=13, rank=3, nullity=10, 1024 parity classes, 21504 passing q, 2 representations.
+- All 13 rows: parity class counts are respectively 32,64,64,1024,256,256,256,64,128,64,64,128,64; q-pass counts and representation counts match prior reports. Full run output ends GRAY_KERNEL_ROOT_TRANSPORT_CHECKS: PASS.
+- New report: research-outputs/GRAY_KERNEL_ROOT_TRANSPORT_2026-11-09.md
+- New verifier: research-outputs/gray_kernel_root_transport_sieve.py
+- Latest commits: verifier 03d922ed487460271f309b9fda9da0edf1d391be; report 02ec05fc49a41f8a1811964baa05cd44a03b65db.
+- This reduces root-extraction/CRT setup from per-q to per-kernel-basis-vector, but no wall-clock speedup is claimed. The Gray class enumeration remains exponential in nullity d, and per-q split search remains exponential.

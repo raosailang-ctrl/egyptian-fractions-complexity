@@ -1,12 +1,11 @@
 [object Object]
 
-Latest multiplicative subgroup obstruction (2026-11-09):
-- Define H=<ell_1,...,ell_n> inside G=(Z/MZ)^×. Since D=product ell_i^a_i belongs to H, the target -D belongs to H iff -1 belongs to H.
-- Every realizable residue product product ell_i^k_i lies in H. Therefore -1 not in H implies N(t)=0. This is a necessary condition only, not sufficient.
-- Choose invariant factor decomposition H ≅ direct sum_j Z/d_j. Let v_i be the coordinate vector of ell_i and b the coordinate vector of -D. The multiplicative target condition is exactly sum_i k_i v_i = b modulo the d_j. Combined with Jacobi, the exact problem becomes bounded mixed-modulus linear system: A k=0 mod2, V k=b mod (d_j), 0<=k_i<=2a_i.
-- Orientation reflection k_i -> 2a_i-k_i preserves the target -D and pairs all target solutions; the center k_i=a_i maps to D, not -D, so no target solution is fixed. Hence target solution count is even.
-- New report: research-outputs/MULTIPLICATIVE_SUBGROUP_OBSTRUCTION_2026-11-09.md (commit 4744739ebb7f0d0df4e04262529afecc246cfd30).
-- No sample subgroup invariant factors or membership certificates have yet been computed.
-
-Next step:
-Compute H=<ell_i> and test -1 membership for t=3,7,17,69,137,185. Prefer an exact constructive method: express subgroup generators in the finite abelian unit group modulo M, derive invariant factors / Smith normal form, and produce a certificate for membership or nonmembership. Then compare subgroup membership with bounded-system feasibility; do not assume -1 in H is sufficient.
+Multiplicative subgroup membership computation (2026-11-09):
+- Computed H=<ell_i> mod M for t=3,7,17,69,137,185 using CRT decomposition of the unit group into cyclic groups modulo p^(2a)||M.
+- For each component, chose a primitive root, computed discrete logs of every ell_i and target -D, and tested integer lattice membership in B=[V|-diag(phi(p^(2a)))].
+- Exact criterion: for full-row-rank B, target b belongs to its column lattice iff gcd of all maximal minors of B equals gcd of all maximal minors of [B|b]. This is an exact determinantal-divisor/Smith-normal-form criterion.
+- Results: t=3 gcd 1=1; t=7 1=1; t=17 2=2; t=69 1=1; t=137 2=2; t=185 2=2. Thus -1 in H for all six parameters.
+- This falsifies usefulness of the simple subgroup obstruction on these six samples: it is necessary but too weak to distinguish represented from unrepresented Jacobi-compatible fixed roots. It does not imply bounded exponent or Jacobi-compatible solution exists.
+- New verifier: research-outputs/multiplicative_subgroup_membership.py (commit 0477a54e3b9af1aa19f24c5e2d3c3cfe40f8938c).
+- New report: research-outputs/MULTIPLICATIVE_SUBGROUP_MEMBERSHIP_2026-11-09.md (commit 859c0cd70d9497df8289610839a298e01ac23f2f).
+- Next step: solve the full mixed-modulus bounded system A k=0 mod2, V k=b mod cyclic orders, 0<=k_i<=2a_i for t=69 and 137. Separate unrestricted integer lattice solvability (already true at subgroup level) from bounded-box feasibility and syndrome restrictions. Seek certificates of infeasibility for the Jacobi-compatible fixed roots absent from actual support.

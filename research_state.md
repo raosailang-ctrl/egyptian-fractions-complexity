@@ -148,3 +148,20 @@ Executed corrected group-algebra MITM validation (2026-11-09):
 
 Next step:
 Generalize sparse group-algebra coefficient extraction to more parameters and study the syndrome-zero residue distribution: support size, maximum atom, collision count, target atom at -D, and compare target frequency with average mass. Use t=7 and t=69 as validated anchors; add t=3,17,137,185 and then larger manageable cases. Preserve independent direct enumeration as an oracle and stop when state growth becomes impractical. Seek a structural character-sum bound, not just numerical observations.
+
+
+Executed syndrome-zero residue distribution experiment (2026-11-09):
+- Added sparse MITM full residue-distribution program: research-outputs/syndrome_zero_residue_distribution.py (commit 7fdf3816259844fa5620c2b2fca3350acd3f6f10).
+- Added report: research-outputs/SYNDROME_ZERO_RESIDUE_DISTRIBUTION_2026-11-09.md (commit 1263ec67f90bb99dc3a868c9be58a2dd10f0c231).
+- Computed exact syndrome-zero residue distributions for t=3,7,17,69,137,185. For each, target atom mu_0(-D)=2N(t) and agrees with independently enumerated representations.
+- Results (t: total syndrome-zero mass / support / target atom / max atom / average / target-to-average / collision pairs):
+  3: 6012 / 1950 / 2 / 8 / 3.0831 / 0.649 / 8195;
+  7: 36138 / 21242 / 4 / 6 / 1.7013 / 2.351 / 20140;
+  17: 11637 / 11526 / 2 / 2 / 1.0096 / 1.981 / 111;
+  69: 7851726 / 7720655 / 4 / 4 / 1.0170 / 3.932 / 131902;
+  137: 82452 / 82375 / 2 / 2 / 1.0009 / 2.000 / 77;
+  185: 54981 / 54936 / 2 / 2 / 1.0008 / 2.000 / 45.
+- Important falsification: the target residue -D is not generally a low-frequency atom. For t=7 it is above average; for t=17,69,137,185 it is a maximum atom. Thus abandon the conjecture that true representations arise from systematically rare residues. For t=3 it is below average.
+- The distribution is close to injective for t=17,69,137,185 (support close to total mass); t=7 has much more concentration. This is only finite evidence, not a general theorem.
+- Corrected group-algebra MITM had already been executed: t=7 and t=69 target coefficients both equal 4=2N(t), with independent direct representation checks.
+- Next step: explain target atom maximality in most samples. Investigate involutions and local-factor symmetries, especially the two orientation choices for e<a and the unique terminal e=a choice; derive autocorrelation/collision identities and characterize when multiple configurations collide at the target. Avoid the disproved low-frequency heuristic.

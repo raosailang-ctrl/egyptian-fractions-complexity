@@ -165,3 +165,16 @@ Executed syndrome-zero residue distribution experiment (2026-11-09):
 - The distribution is close to injective for t=17,69,137,185 (support close to total mass); t=7 has much more concentration. This is only finite evidence, not a general theorem.
 - Corrected group-algebra MITM had already been executed: t=7 and t=69 target coefficients both equal 4=2N(t), with independent direct representation checks.
 - Next step: explain target atom maximality in most samples. Investigate involutions and local-factor symmetries, especially the two orientation choices for e<a and the unique terminal e=a choice; derive autocorrelation/collision identities and characterize when multiple configurations collide at the target. Avoid the disproved low-frequency heuristic.
+
+
+Latest orientation-swap involution theorem (2026-11-09):
+- For each local configuration (q,r,s) with qrs=D and gcd(r,s)=1, define residue g=qr^2 mod M. Swapping r and s preserves q and the Jacobi syndrome, and sends g to D^2*g^(-1) mod M.
+- Therefore the syndrome-zero residue distribution satisfies mu_0(g)=mu_0(D^2*g^(-1)) exactly.
+- The only configuration fixed by swapping r and s is r=s=1, q=D, because gcd(r,s)=1. It has residue D. Thus every fixed residue g with g^2=D^2 mod M has even mass except g=D, whose mass is odd. This includes target -D as a fixed residue distinct from D (M>2, gcd(D,M)=1), so mu_0(-D) is even, consistent with 2N.
+- Important caveat: modulo composite M, g^2=D^2 can have more than the two roots ±D; do not assume only two fixed residues.
+- Updated verifier adds assertions for involution symmetry and fixed-atom parity: research-outputs/syndrome_zero_residue_distribution.py (commit e63ce4fe3847efe15c7c4db09c786893d33a9237).
+- New theorem report: research-outputs/ORIENTATION_SWAP_INVOLUTION_2026-11-09.md (commit 557b5f1cd0c8fc853d8fbe10896edcc75d8d6842).
+- The general theorem is proved algebraically. The newly added computational assertions have not yet been rerun across the six data sets; rerun before marking computational regression complete.
+
+Next step:
+Run the updated residue distribution verifier on t=3,7,17,69,137,185. Record the full fixed-residue list g^2=D^2 mod M and how many are in the support. Then quotient the distribution by the involution orbits and recompute collision statistics orbit-wise. Investigate whether the target -D has an additional stabilizer or symmetry beyond the basic orientation swap. Do not claim a new N(t) bound yet.

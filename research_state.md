@@ -178,3 +178,14 @@ Latest orientation-swap involution theorem (2026-11-09):
 
 Next step:
 Run the updated residue distribution verifier on t=3,7,17,69,137,185. Record the full fixed-residue list g^2=D^2 mod M and how many are in the support. Then quotient the distribution by the involution orbits and recompute collision statistics orbit-wise. Investigate whether the target -D has an additional stabilizer or symmetry beyond the basic orientation swap. Do not claim a new N(t) bound yet.
+
+
+Fixed-residue/Jacobi intersection results (2026-11-09):
+- Computed H_t={g mod M: g^2=D^2 mod M} by solving each prime-power congruence and CRT, then intersected H_t with the exact syndrome-zero residue support.
+- Six parameters: t=3: |H|=4, supported fixed residues=2, target mass=2, D fails Jacobi; t=7: 8,2,4,D fails; t=17: 8,2,2,D passes; t=69: 8,1,4,D fails; t=137: 16,1,2,D fails; t=185: 8,2,2,D passes.
+- Supported fixed atoms: t=3 {445:2,10507:4}; t=7 {90371:4,134471:4}; t=17 {787611:2,11357614:1}; t=69 {12927427:4}; t=137 {50932491:2}; t=185 {92860011:2,168733623214:1}. The target -D is the first/only listed target in each case.
+- Crucial correction: the unique configuration fixed by swapping r,s is (q,r,s)=(D,1,1), residue D, but it belongs to syndrome-zero only if D itself passes all Jacobi rows. This occurs among these samples only at t=17 and 185. Therefore fixed-atom parity is: all fixed residues other than D have even mass; D has odd mass only when D passes Jacobi (then its mass includes the one fixed configuration). Target -D is distinct from D for M>2 and always has even mass.
+- Corrected involution report: research-outputs/ORIENTATION_SWAP_INVOLUTION_2026-11-09.md (commit f69197079f57cdf367fc65c5c9b34084d79a50fd).
+- New intersection report: research-outputs/FIXED_RESIDUES_JACOBI_INTERSECTION_2026-11-09.md (commit a26b1dbdc90c1820f555921b0e992b4e9557588f).
+- Updated distribution verifier contains exact involution symmetry and conditional fixed-atom parity assertions. A standalone independent run on six values confirmed the listed fixed-root counts, supported fixed atoms, and parity statements.
+- New open direction: characterize H_t intersected with the Jacobi syndrome-zero condition directly, potentially using local Legendre symbols and linear algebra, before computing full residue distributions.

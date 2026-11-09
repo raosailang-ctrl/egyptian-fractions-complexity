@@ -133,3 +133,5 @@ Critical correction to group-algebra formulation (2026-11-09):
 
 Next step:
 Execute corrected_group_algebra_mitm.py on t=7 and t=69. If the state tables are too large, split the local factors by product of branching counts (not just number of factors), and report actual state counts and runtime. Confirm the corrected target coefficient equals 4 in each case, matching 2N with N=2. Only after successful execution should the group-algebra computational validation be marked complete.
+
+- Further Fourier-sign correction: because the target group element is -D, the character factor is chi((-D)^(-1)) = chi(-1)chi(D^(-1)); omitting chi(-1) is incorrect for characters nontrivial on -1. Corrected in the group-algebra report, commit 97b37ea4be205551ed55659e8f655bc402e37059.

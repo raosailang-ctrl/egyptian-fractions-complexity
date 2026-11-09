@@ -135,3 +135,16 @@ Next step:
 Execute corrected_group_algebra_mitm.py on t=7 and t=69. If the state tables are too large, split the local factors by product of branching counts (not just number of factors), and report actual state counts and runtime. Confirm the corrected target coefficient equals 4 in each case, matching 2N with N=2. Only after successful execution should the group-algebra computational validation be marked complete.
 
 - Further Fourier-sign correction: because the target group element is -D, the character factor is chi((-D)^(-1)) = chi(-1)chi(D^(-1)); omitting chi(-1) is incorrect for characters nontrivial on -1. Corrected in the group-algebra report, commit 97b37ea4be205551ed55659e8f655bc402e37059.
+
+
+Executed corrected group-algebra MITM validation (2026-11-09):
+- Ran corrected_group_algebra_mitm.py successfully on t=7 and t=69.
+- t=7: local factors [5,11,7,3,3,3,3,3,3], raw half configurations 20x21, aggregated sparse states 297x945, total local configurations 280,665, Jacobi-passing q=576, corrected target coefficient [0,-D]P=4, independent direct N=2. Recovered (q,r,s): (324,11893677,12888073) and (16814886,81,36464494).
+- t=69: local factors [13,7,5,7,3,3,3,3,3,3,3,3,3], raw half configurations 30x29, aggregated sparse states 5,265x11,907, total local configurations 62,690,355, Jacobi-passing q=21,504, corrected target coefficient [0,-D]P=4, independent direct N=2. Recovered (19600,14663540485,14784049124) and (3470764,430908401,2841046000).
+- Both exact checks satisfy coefficient=2N(t); output: CORRECTED_GROUP_ALGEBRA_MITM_CHECKS: PASS.
+- The corrected theorem and Fourier sign are now reflected in GROUP_ALGEBRA_GLOBAL_SIEVE_2026-11-09.md (correction commits 6cb7232504e7dbd421e466c84053b820c25f4ec3 and 97b37ea4be205551ed55659e8f655bc402e37059).
+- Executed-results report: research-outputs/CORRECTED_GROUP_ALGEBRA_MITM_RESULTS_2026-11-09.md (commit 10561665180e520611c08e5f0ab2968c9e6d5c63).
+- Important boundary: only t=7 and t=69 are validated; no general asymptotic or uniqueness claim. State aggregation is exact but not proven polynomial-time; state spaces can grow.
+
+Next step:
+Generalize sparse group-algebra coefficient extraction to more parameters and study the syndrome-zero residue distribution: support size, maximum atom, collision count, target atom at -D, and compare target frequency with average mass. Use t=7 and t=69 as validated anchors; add t=3,17,137,185 and then larger manageable cases. Preserve independent direct enumeration as an oracle and stop when state growth becomes impractical. Seek a structural character-sum bound, not just numerical observations.

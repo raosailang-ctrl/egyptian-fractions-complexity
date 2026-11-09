@@ -37,7 +37,7 @@ Open problems:
 - Siegel gcd-escape, genus-two rational point classification, and literature-priority audit remain open.
 
 Next step:
-Optimize the MITM core rather than broaden claims. First derive incremental root updates across q-divisors: if q is changed by one prime factor, relate roots of -D/q modulo each p^(2a) to roots already computed, and identify when square-root lifting can be updated by multiplying by a precomputed square root of the q-ratio. In parallel, replace equal-count splitting by a bit-weight-balanced split of the prime-power blocks. Benchmark both on t=69 and the 13-parameter set, and retain direct enumeration as a correctness oracle on small cases. Do not claim polynomial time or uniqueness.
+Derive and exploit common square-class root transport across all q passing the Jacobi filter. Proved: if q,q' both satisfy (q/p)=(q'/p)=1 for every p|h, then q/q' is a square modulo M=h^2; multiplication by a square root of q/q' bijects the roots of x^2=-D/q with those of x^2=-D/q'. Use q'=1 as a common anchor: compute roots of -D once, then for each passing q compute one multiplier w_q^2=q^(-1) mod M and transport the complete root set. Implemented and tested on all 13 selected parameters. For every passing q at t=7 and t=69, transported roots were compared with direct roots and matched exactly; MITM-selected q were also compared with direct unitary-split enumeration. All tests pass and known noncanonical solutions remain. Next: seek Gray-code/kernel traversal to update w_q incrementally, then bit-weight-balanced MITM partitioning. Do not claim polynomial time or uniqueness.
 
 Artifacts:
 - research-outputs/LOCAL_JACOBI_AP_THEOREM_AND_RANK_SURVEY_2026-11-08.md
@@ -48,3 +48,16 @@ Artifacts:
 - research-outputs/verify_local_global_sieve.py
 - research-outputs/ADAPTIVE_MITM_LOCAL_GLOBAL_SIEVE_2026-11-09.md
 - research-outputs/adaptive_mitm_local_global_sieve.py
+
+
+Latest root-transport result:
+- Report: research-outputs/ROOT_TRANSPORT_MITM_LOCAL_GLOBAL_SIEVE_2026-11-09.md
+- Verifier: research-outputs/root_transport_mitm_local_global_sieve.py
+- Root transport lemma: for q,q' passing all local Jacobi rows, q/q' is a square mod M; if w^2=q/q', then z -> wz maps roots of -D/q bijectively to roots of -D/q'. With anchor q'=1, roots(-D/q)=w_q*roots(-D), w_q^2=q^(-1) mod M.
+- Verified all 13 parameter outputs against previous exact representation counts. For t=7 and t=69, every passing q's transported root set was compared with a freshly computed root set; all equal. MITM cases were cross-checked against direct unitary-split enumeration.
+- t=7 retains both (q,r,s)=(324,11893677,12888073) and (16814886,81,36464494); t=69 retains (19600,14663540485,14784049124) and (3470764,430908401,2841046000).
+- Timing observation on SymPy 1.14.0: t=69 approx 8.4s without full root-set audit, 12.6s with audit; not a comparative speedup claim.
+- Latest commits: root-transport verifier 8e368df1864689ab46b83da111c1e81528ad768c; corrected theorem report 0c2deff2f3bcf0163223550950e60bffa9254b2c.
+
+New open problem:
+- The root multiplier w_q is still recomputed separately for each q. The passing exponent vectors solve an affine F_2 system; investigate Gray-code traversal of its kernel and precomputed square roots of kernel-supported prime products to update w_q by multiplication rather than repeated local square-root extraction.

@@ -85,8 +85,25 @@ def analyze(t):
     for es in product(*[range(a+1) for _,a in items]):
         q=prod(p**e for (p,_),e in zip(items,es))
         if all(legendre_symbol(q,p)==1 for p in ps):qpass+=1
+    # Orientation-swap involution: g -> D^2/g. The only fixed local
+    # configuration is q=D, r=s=1, whose residue is D. Hence every
+    # other fixed residue has even mass; the atom at D is odd.
+    involution_checks=0
+    fixed_atoms=[]
+    for g,mass in distribution.items():
+        partner=(D*D*pow(g,-1,M))%M
+        assert distribution.get(partner,0)==mass,(t,g,partner,mass,distribution.get(partner,0))
+        involution_checks+=1
+        if (g*g-D*D)%M==0:
+            fixed_atoms.append((g,mass))
+            if g==D%M:
+                assert mass%2==1,(t,g,mass)
+            else:
+                assert mass%2==0,(t,g,mass)
     assert target_mass%2==0
+    assert (D-D*D*pow(target,-1,M))%M==0
     return dict(t=t,n=len(factors),rows=len(ps),raw_left=raw_left,raw_right=raw_right,
+      involution_checks=involution_checks,fixed_atoms=sorted(fixed_atoms),
       left_states=len(A),right_states=len(B),pair_states=pair_states,
       build_seconds=build_seconds,combine_seconds=combine_seconds,
       syndrome_zero_mass=total_mass,support=support,target_mass=target_mass,
@@ -110,7 +127,7 @@ def main():
         print("  raw halves:",x["raw_left"],x["raw_right"],
               "pair states:",x["pair_states"],
               "build/combine seconds:",f"{x['build_seconds']:.4f}",f"{x['combine_seconds']:.4f}")
-        print("  atom histogram:",x["histogram"])
+        print("  involution checks / fixed atoms:",x["involution_checks"],x["fixed_atoms"])\n        print("  atom histogram:",x["histogram"])
     print("SYNDROME_ZERO_RESIDUE_DISTRIBUTION_CHECKS: PASS")
 
 if __name__=="__main__":main()

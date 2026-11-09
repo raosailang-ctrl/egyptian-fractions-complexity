@@ -201,3 +201,19 @@ New general theorem: Jacobi-compatible fixed roots (2026-11-09):
 - New proof/report: research-outputs/JACOBI_COMPATIBLE_FIXED_ROOTS_2026-11-09.md (commit 512c7e22a0562b7b24fc7a9985d733ae27bd0766).
 - New verifier: research-outputs/jacobi_compatible_fixed_roots.py (commit 1931357cac4ea0a533503a29e05d27c1cb9f391a). It compares direct CRT roots and Legendre tests with the sign formula.
 - Next step: characterize the gap between Jacobi-compatible fixed roots and actually supported fixed roots. For each sign vector, determine whether there exists a local exponent/direction configuration realizing g. Use local factor subset-product equations and syndrome constraints; t=69 and t=137 are useful cases where the candidate count is 2 or 4 but support intersection is only 1. Do not treat Jacobi compatibility as sufficient.
+
+
+Latest bounded-exponent-vector reformulation (2026-11-09):
+- For each prime factor ell_i^a_i||D, old local choices are exponent e_i in [0,a_i] and direction epsilon_i in {0,1} when e_i<a_i, with only one choice at e_i=a_i.
+- Define k_i=e_i+2(a_i-e_i)epsilon_i. This is a bijection between local configurations and integers k_i in [0,2a_i]. Inverse: k<a -> (e=k,epsilon=0); k=a -> e=a single choice; k>a -> (e=2a-k,epsilon=1).
+- Since k_i ≡ e_i mod2, the Jacobi syndrome condition becomes A k=0 over F_2.
+- The global residue becomes g=product_i ell_i^k_i mod M. Thus exact distribution:
+  mu_0(g)=#{k in product_i[0,2a_i]: A k=0 mod2, product ell_i^k_i=g mod M}.
+- Exact representation formula:
+  N(t)=1/2 * #{bounded integer vectors k: A k=0 mod2 and product ell_i^k_i ≡ -D mod M}.
+- Orientation swap is simply k_i -> 2a_i-k_i, and induces g -> D^2*g^(-1). This recovers the involution structurally.
+- This is a cleaner exact characterization of the local-global obstruction. It does not yet yield a new asymptotic bound or polynomial-time algorithm.
+- New report: research-outputs/BOUNDED_EXPONENT_VECTOR_GLOBAL_REALIZATION_2026-11-09.md (commit 36bbe87fedb8c746c18aa74ac94b3b4ba60f3a85).
+
+Next step:
+For Jacobi-compatible fixed roots, especially t=69 and t=137, solve the bounded exponent system k_i in [0,2a_i], A k=0 mod2, product ell_i^k_i=g mod M. Count solutions per fixed root and compare the target -D against other roots. Use parity-kernel decomposition followed by MITM on the residual exponent choices. Preserve exact integer counts and independent checks.

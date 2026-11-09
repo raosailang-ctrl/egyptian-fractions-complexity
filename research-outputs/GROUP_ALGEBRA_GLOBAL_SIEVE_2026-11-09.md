@@ -74,7 +74,7 @@ P_i=
 2N(t)=\frac1{2^m|G|}
 \sum_{u\in\mathbb F_2^m}
 \sum_{\chi\in\widehat G}
-\chi(D^{-1})
+\chi((-D)^{-1})
 \prod_{i=1}^n F_i(u,\chi),
 \tag{2}
 ]

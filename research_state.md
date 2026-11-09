@@ -189,3 +189,15 @@ Fixed-residue/Jacobi intersection results (2026-11-09):
 - New intersection report: research-outputs/FIXED_RESIDUES_JACOBI_INTERSECTION_2026-11-09.md (commit a26b1dbdc90c1820f555921b0e992b4e9557588f).
 - Updated distribution verifier contains exact involution symmetry and conditional fixed-atom parity assertions. A standalone independent run on six values confirmed the listed fixed-root counts, supported fixed atoms, and parity statements.
 - New open direction: characterize H_t intersected with the Jacobi syndrome-zero condition directly, potentially using local Legendre symbols and linear algebra, before computing full residue distributions.
+
+
+New general theorem: Jacobi-compatible fixed roots (2026-11-09):
+- For any local configuration g=q r^2 mod M with p|h, gcd(r,M)=1, so (g/p)=(q/p). Thus the Jacobi syndrome of the residue g is exactly the syndrome of q.
+- Assume h is odd and M=h^2. A fixed residue satisfies g^2=D^2 mod p^(2a), p^a||h. Since p is odd and D is a unit, the only local roots are g=+D or -D modulo p^(2a). CRT gives |H_t|=2^omega(h).
+- For each p|h, the sign epsilon_p must satisfy (epsilon_p D/p)=1. If p=1 mod4, both signs are allowed iff (D/p)=1, otherwise neither. If p=3 mod4, exactly one sign is allowed. Therefore the number of Jacobi-compatible fixed roots is 2^#{p|h:p=1 mod4} if (D/p)=1 for every p|h with p=1 mod4, and zero otherwise.
+- This counts fixed roots satisfying local Jacobi conditions, not necessarily roots actually realized by local configurations. Actual support can be strictly smaller.
+- Six sample counts: t=3: all roots 4, Jacobi-compatible 2, support fixed roots 2; t=7: 8,4,2; t=17: 8,8,2; t=69: 8,2,1; t=137:16,4,1; t=185:8,8,2.
+- Example t=69: p=3,23 (both 3 mod4) each force one sign; p=829 (1 mod4, (D/p)=1) allows two signs, so exactly two Jacobi-compatible fixed roots, but only one is in the actual syndrome-zero residue support.
+- New proof/report: research-outputs/JACOBI_COMPATIBLE_FIXED_ROOTS_2026-11-09.md (commit 512c7e22a0562b7b24fc7a9985d733ae27bd0766).
+- New verifier: research-outputs/jacobi_compatible_fixed_roots.py (commit 1931357cac4ea0a533503a29e05d27c1cb9f391a). It compares direct CRT roots and Legendre tests with the sign formula.
+- Next step: characterize the gap between Jacobi-compatible fixed roots and actually supported fixed roots. For each sign vector, determine whether there exists a local exponent/direction configuration realizing g. Use local factor subset-product equations and syndrome constraints; t=69 and t=137 are useful cases where the candidate count is 2 or 4 but support intersection is only 1. Do not treat Jacobi compatibility as sufficient.
